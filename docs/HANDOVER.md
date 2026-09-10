@@ -70,6 +70,36 @@ Frontend — npm workspaces `frontend/{common,user,admin}`:
 - Indexes for budgets/warranties/notifications are in `app/indexes.go`; `make ensure-indexes` builds
   them (already run against the dev DB `expenselens`? NO — only the smoke DB; run it once for dev).
 
+## Phase 5 design (decided 2026-09-10, follow this)
+Admin portal already has: login/refresh/logout, `/api/admin/{me,stats,users,users/{id},system-config…}`,
+frontend login/dashboard/users/config. Build the rest in `backend/admin` + `frontend/admin`:
+- Users: `POST /api/admin/users/{id}/disable|enable` (sets `users.disabled`; the user API must reject
+  disabled users at login/refresh and in `EnsureAuth`-level lookups — add the check in the common
+  auth service, not the handlers), `DELETE /api/admin/users/{id}` (cascade = same steps as
+  `backend/user/internal/services/auth.DeleteAccount`; move that cascade into a common helper
+  `common/services/user/cascade.go` that takes a `storage.Provider`, so both portals share it),
+  `POST /api/admin/users/{id}/reset-password-link` (issues the existing reset token via the common
+  auth service and returns the URL; never emails from admin). Superadmin only for delete.
+- Extraction monitoring: `GET /api/admin/extraction/stats?range` (volume per day, failure rate,
+  model breakdown, average confidence; aggregate on `receipts.extracted`) and
+  `GET /api/admin/extraction/failed?page` + `POST /api/admin/extraction/{receiptId}/retry`
+  (admin API cannot reach the user API's worker pool; retry = set `status: processing` and call a
+  shared re-extract path in `common` **or** enqueue via the user API's `/openapi/config/reload`-style
+  secret route `POST /openapi/receipts/{id}/reextract` guarded by `CONFIG_RELOAD_SECRET`. Prefer the
+  secret route; document it in PLAN §4).
+- Default categories: `GET|POST /api/admin/categories`, `PATCH|DELETE /api/admin/categories/{id}`
+  on system categories (`userId` null). Deleting a system category reassigns receipts of ALL users to
+  `others`; `others` itself cannot be deleted. Slug must stay unique among system categories.
+- Audit log: collection `admin_audit_log` {adminId, action, targetType, targetId, details, ip, at};
+  written by every mutating admin route via a helper in `admin/internal/services/audit`;
+  `GET /api/admin/audit?page&action&adminId`. Index `{at: -1}`, `{targetId, at: -1}`.
+- Frontend (`frontend/admin`): Users page gains disable/enable/delete/reset-link actions in the
+  detail modal; new pages Extraction (stat tiles + failure list + retry), Categories (system CRUD
+  with the shared icon picker from `@common/categories/icons`), Audit log (table with filters);
+  add them to `AdminShell` nav.
+- Verify with `admin_smoke.py` (extend; :8094, scratch DB) + `e2e/admin.mjs` at 1280px and 400px.
+  Live-credential checks (Gemini, Cloudinary, OAuth) come LAST, only after the user provides keys.
+
 ## Verification done this session
 - `make test` (go tests + vitest), `make lint` (go vet ×3, oxlint clean except the pre-existing
   `incompatible-library` warning, tsc ×3), `make build` (user + admin bundles) — all green.
