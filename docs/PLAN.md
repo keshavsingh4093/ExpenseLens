@@ -10,7 +10,7 @@ Analytics, Budgets, Warranty, Settings, Categories, Reports, Notifications.
 | Area | Decision |
 |---|---|
 | Frontend | React 19, Vite, TypeScript, Tailwind v4, React Router v7, TanStack Query v5, react-hook-form + zod, Recharts, react-dropzone, lucide-react |
-| Backend | Go 1.23+, chi, MongoDB driver v2, `caarlos0/env` for config, `go-playground/validator`, `golang-jwt/jwt/v5`, `golang.org/x/oauth2` |
+| Backend | Go, chi, MongoDB. **Layout and infra library follow dbc-pro conventions** (`docs/BACKEND_RESTRUCTURE.md`); until that restructure lands the code uses the original flat `internal/<domain>` layout with mongo-driver v2 |
 | Database | MongoDB (docker-compose locally, Atlas or self-hosted in prod) |
 | File storage | Cloudinary via `storage.Provider` interface; `local` provider for dev/tests |
 | Extraction | Gemini API via `extraction.Extractor` interface. Default model `gemini-3.1-pro-preview`; `gemini-3.7-flash` as cheaper option. Model name from `GEMINI_MODEL` env. |
@@ -204,6 +204,16 @@ on final failure receipt → `failed` with error stored, notification emitted.
 - [x] Dashboard: KPI tiles, trend chart, category donut, recent receipts, budget overview
       (budget widget reads Phase 3 data; render empty state until then)
 - [x] `analytics/summary` + `trend` + `categories` + `merchants` + `stats` endpoints
+
+### Phase 2.5 — Restructure backend to dbc-pro layout (decided 2026-09-10)
+Spec: `docs/BACKEND_RESTRUCTURE.md`. Do this BEFORE Phase 3 so new domains land in the final shape.
+- [ ] New go.mod (`gitlab.tezminds.com/smart-receipt/backend`, replace → `../../infra/golang`), mongo-driver v1
+- [ ] `internal/pkg/{config,middleware,models,validate,storage,extraction,mail}` per spec
+- [ ] `internal/services/{auth,user,category,receipt,analytics}` (service.go + helper.go)
+- [ ] `internal/http/{openapi,api,router}` with RouteSpecs and aggregators; `internal/app` boot + indexes
+- [ ] `cmd/server`, `cmd/scripts/ensure-indexes`, Makefile, `.env.example`
+- [ ] Frontend client/proxy updated to `/openapi` + `/api` and the `{success,data,error,code}` envelope
+- [ ] Unit tests ported; API smoke + Playwright flows green; commit
 
 ### Phase 3 — Insights and tracking
 - [ ] Budgets: API + Budgets screen (month nav, progress bars, add/edit)

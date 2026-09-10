@@ -23,11 +23,16 @@ Receipt-first personal expense tracker. INR-first, Indian market, responsive web
 - Auth: email/password + Google + Microsoft + Apple. JWT access token + rotating refresh cookie.
 
 ## Conventions
-- Backend layout: `backend/cmd/api`, `backend/internal/<domain>` (handler.go, service.go, repo.go,
-  model.go per domain). No business logic in handlers.
+- Backend layout: target is the dbc-pro layout described in `docs/BACKEND_RESTRUCTURE.md`
+  (`cmd/server`, `internal/app`, `internal/http/{openapi,api,router}`, `internal/services/*`,
+  `internal/pkg/*`, infra library via local replace). Until Phase 2.5 lands, the code is the
+  original flat `backend/internal/<domain>` layout. No business logic in handlers either way.
+- Never build Mongo indexes on the server boot path (see dbc-pro `backend/CLAUDE.md`); use the
+  `ensure-indexes` tool.
 - All money stored as int64 minor units (paise) + ISO currency code. Never floats.
 - Dates stored as UTC `time.Time`; receipt date also kept as `YYYY-MM-DD` string in the user's tz.
-- API is JSON under `/api/v1`. Errors: `{ "error": { "code": "...", "message": "..." } }`.
+- API paths: `/openapi/…` unauthenticated, `/api/…` authenticated (after Phase 2.5; currently
+  `/api/v1`). Envelope after 2.5: `{success, data, error, code}`.
 - Frontend: feature folders under `src/features/<name>`, shared UI in `src/components/ui`,
   API client in `src/lib/api`, TanStack Query for server state.
 - Run: `make dev` at repo root starts mongo (docker), backend, and frontend. See Makefile.
@@ -35,4 +40,5 @@ Receipt-first personal expense tracker. INR-first, Indian market, responsive web
 
 ## Do not
 - Do not commit `.env` files. `.env.example` files are the contract.
+- Git is local only; do not add remotes or push unless the user asks.
 - Do not hardcode Cloudinary or Gemini specifics outside their provider packages.
