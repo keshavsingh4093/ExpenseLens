@@ -1,5 +1,6 @@
-import { NavLink, Outlet, Link } from 'react-router'
-import { Plus, ScanLine } from 'lucide-react'
+import { NavLink, Outlet, Link, useNavigate } from 'react-router'
+import { Plus, ScanLine, LogOut } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
 import { clsx } from 'clsx'
 import { sidebarNav, bottomNav } from './nav'
 
@@ -44,7 +45,36 @@ function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      <UserBlock />
     </aside>
+  )
+}
+
+function UserBlock() {
+  const { user, logout } = useAuth()
+  const nav = useNavigate()
+  if (!user) return null
+  const initials = user.name.split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase()
+  return (
+    <div className="mt-4 flex items-center gap-3 rounded-lg border border-[var(--border)] p-2">
+      {user.avatarUrl ? (
+        <img src={user.avatarUrl} alt="" className="size-9 rounded-full object-cover" />
+      ) : (
+        <div className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">{initials}</div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium">{user.name}</div>
+        <div className="text-muted truncate text-xs">{user.email}</div>
+      </div>
+      <button
+        type="button"
+        aria-label="Sign out"
+        onClick={() => logout().then(() => nav('/login', { replace: true }))}
+        className="text-muted rounded-md p-1.5 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-900/30"
+      >
+        <LogOut className="size-4" />
+      </button>
+    </div>
   )
 }
 

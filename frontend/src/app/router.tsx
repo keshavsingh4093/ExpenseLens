@@ -1,25 +1,66 @@
-import { createBrowserRouter } from 'react-router'
+import { createBrowserRouter, Navigate } from 'react-router'
 import { AppShell } from './AppShell'
 import { Placeholder } from '@/components/ui/Placeholder'
+import { RequireAuth, GuestOnly } from '@/features/auth/RequireAuth'
+import { LoginPage } from '@/features/auth/LoginPage'
+import { RegisterPage } from '@/features/auth/RegisterPage'
+import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage'
+import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage'
+import { OAuthCallbackPage } from '@/features/auth/OAuthCallbackPage'
+import { SettingsLayout } from '@/features/settings/SettingsLayout'
+import { ProfilePage } from '@/features/settings/ProfilePage'
+import { SecurityPage } from '@/features/settings/SecurityPage'
+import { PreferencesPage } from '@/features/settings/PreferencesPage'
+import { NotificationsSettingsPage } from '@/features/settings/NotificationsPage'
+import { DataPrivacyPage } from '@/features/settings/DataPrivacyPage'
+import { ExportPage, HelpPage, AboutPage } from '@/features/settings/StaticPages'
 
 export const router = createBrowserRouter([
   {
-    path: '/',
-    element: <AppShell />,
+    element: <RequireAuth />,
     children: [
-      { index: true, element: <Placeholder title="Dashboard" /> },
-      { path: 'receipts', element: <Placeholder title="Receipts" /> },
-      { path: 'receipts/:id', element: <Placeholder title="Receipt Details" /> },
-      { path: 'upload', element: <Placeholder title="Upload Receipt" /> },
-      { path: 'analytics', element: <Placeholder title="Analytics" /> },
-      { path: 'budgets', element: <Placeholder title="Budgets" /> },
-      { path: 'categories', element: <Placeholder title="Categories" /> },
-      { path: 'warranty', element: <Placeholder title="Warranty" /> },
-      { path: 'reports', element: <Placeholder title="Reports" /> },
-      { path: 'notifications', element: <Placeholder title="Notifications" /> },
-      { path: 'settings/*', element: <Placeholder title="Settings" /> },
+      {
+        path: '/',
+        element: <AppShell />,
+        children: [
+          { index: true, element: <Placeholder title="Dashboard" /> },
+          { path: 'receipts', element: <Placeholder title="Receipts" /> },
+          { path: 'receipts/:id', element: <Placeholder title="Receipt Details" /> },
+          { path: 'upload', element: <Placeholder title="Upload Receipt" /> },
+          { path: 'analytics', element: <Placeholder title="Analytics" /> },
+          { path: 'budgets', element: <Placeholder title="Budgets" /> },
+          { path: 'categories', element: <Placeholder title="Categories" /> },
+          { path: 'warranty', element: <Placeholder title="Warranty" /> },
+          { path: 'reports', element: <Placeholder title="Reports" /> },
+          { path: 'notifications', element: <Placeholder title="Notifications" /> },
+          { path: 'more', element: <Placeholder title="More" /> },
+          {
+            path: 'settings',
+            element: <SettingsLayout />,
+            children: [
+              { index: true, element: <ProfilePage /> },
+              { path: 'security', element: <SecurityPage /> },
+              { path: 'preferences', element: <PreferencesPage /> },
+              { path: 'notifications', element: <NotificationsSettingsPage /> },
+              { path: 'data', element: <DataPrivacyPage /> },
+              { path: 'export', element: <ExportPage /> },
+              { path: 'help', element: <HelpPage /> },
+              { path: 'about', element: <AboutPage /> },
+            ],
+          },
+        ],
+      },
     ],
   },
-  { path: '/login', element: <Placeholder title="Login" /> },
-  { path: '/register', element: <Placeholder title="Register" /> },
+  {
+    element: <GuestOnly />,
+    children: [
+      { path: '/login', element: <LoginPage /> },
+      { path: '/register', element: <RegisterPage /> },
+      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      { path: '/reset-password', element: <ResetPasswordPage /> },
+    ],
+  },
+  { path: '/auth/callback', element: <OAuthCallbackPage /> },
+  { path: '*', element: <Navigate to="/" replace /> },
 ])

@@ -12,9 +12,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
+	"expenselens/backend/internal/auth"
 	"expenselens/backend/internal/config"
 	"expenselens/backend/internal/db"
+	"expenselens/backend/internal/mail"
 	"expenselens/backend/internal/server"
+	"expenselens/backend/internal/users"
 )
 
 func main() {
@@ -41,11 +46,29 @@ func run() error {
 	defer database.Close(context.Background())
 	slog.Info("mongo connected", "db", cfg.MongoDB)
 
-	if err := database.EnsureIndexes(ctx /* domain index sets are appended here as packages land */); err != nil {
+	if err := database.EnsureIndexes(ctx, users.Indexes(), auth.Indexes()); err != nil {
 		return err
 	}
 
+	// Dependencies
+	mailer := mail.New(cfg.Mail)
+	userRepo := users.NewRepo(database)
+	tokenRepo := auth.NewTokenRepo(database)
+	authSvc := auth.NewService(cfg, userRepo, tokenRepo, mailer)
+	providers, perrs := auth.NewProviders(ctx, cfg)
+	for _, e := range perrs {
+		slog.Warn("oauth provider disabled", "err", e)
+	}
+	slog.Info("oauth providers", "enabled", len(providers))
+
+	// Routes
 	router := server.New(cfg)
+	api := router.API()
+	auth.NewHandler(cfg, authSvc, userRepo, providers).Mount(api)
+	api.Group(func(r chi.Router) {
+		r.Use(auth.RequireAuth(cfg.JWTSecret))
+		users.NewHandler(userRepo, auth.UserID, authSvc).Mount(r)
+	})
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),

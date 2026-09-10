@@ -181,13 +181,14 @@ on final failure receipt → `failed` with error stored, notification emitted.
       `class` strategy
 
 ### Phase 1 — Auth and profile
-- [ ] Register/login/logout/refresh with argon2id + JWT + rotating refresh cookie
-- [ ] Google OAuth (authorization code), Microsoft (common tenant), Apple (form_post, client secret
-      JWT generated from .p8 key). Account linking by verified email.
-- [ ] Forgot/reset password (email sender interface; log-to-console impl in dev)
-- [ ] `GET /me`, `PATCH /me`, preferences (currency, language, theme, timezone, notification toggles)
-- [ ] Frontend: Login, Register, OAuth buttons + callback route, protected routes, Settings →
-      Profile / Security / Preferences screens
+- [x] Register/login/logout/refresh with argon2id + JWT + rotating refresh cookie
+- [x] Google OAuth (authorization code), Microsoft (common tenant), Apple (form_post, client secret
+      JWT generated from .p8 key). Account linking by verified email. (Code complete via go-oidc;
+      untested against live providers until credentials are supplied.)
+- [x] Forgot/reset password (email sender interface; log-to-console impl in dev)
+- [x] `GET /me`, `PATCH /me`, preferences (currency, language, theme, timezone, notification toggles)
+- [x] Frontend: Login, Register, OAuth buttons + callback route, protected routes, Settings →
+      Profile / Security / Preferences screens (+ Notifications, Data & Privacy, static pages)
 
 ### Phase 2 — Core receipt flow
 - [ ] `storage.Provider` interface + local impl + Cloudinary impl + tests with local impl
