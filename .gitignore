@@ -1,0 +1,19 @@
+# env
+.env
+.env.*
+!.env.example
+
+# backend
+backend/bin/
+backend/tmp/
+backend/.data/
+backend/coverage.out
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# misc
+.DS_Store
+*.log
