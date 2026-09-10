@@ -1,121 +1,148 @@
-# Backend restructure → dbc-pro conventions
+# Restructure → dbc-pro conventions (backend AND frontend)
 
-Goal: make `backend/` look and behave like `~/repos/dbcpro/backend/user` so the team can work on
-both with the same muscle memory, and reuse the shared infra library.
+Decided 2026-09-10. Three rules from the user:
+1. `backend/` and `frontend/` each get a **`user` / `common` / `admin`** split.
+2. Everything shared across portals lives in **`common`**.
+3. **No code from outside this repository.** No `replace` directives to sibling repos
+   (`~/repos/infra`, `~/repos/dbcpro`), no copying files from them. Third-party modules from the
+   Go module proxy / npm registry are fine. dbc-pro and infra may be *read* as references for
+   API shape and conventions only.
 
-Reference repos on this machine (read-only, do NOT modify):
-- `~/repos/dbcpro/backend/user` — the layout to mirror (`cmd/server`, `internal/app`,
-  `internal/config`, `internal/http/{api,openapi,router}`, `internal/pkg/*`, `internal/services/*`).
-- `~/repos/dbcpro/backend/CLAUDE.md` — boot-path and `.env` policy rules (apply them here too).
-- `~/repos/infra/golang` — module `gitlab.tezminds.com/infra/golang`; consumed via a local
-  `replace`. Provides `pkg/http` (RouteSpec, LoadAPIs/LoadOpenAPIs, response envelope, NewServer),
-  `pkg/middleware` (ConfigureAuth, EnsureAuth, CORS, Logging, WithTimeout, RecoveryAndClean),
-  `pkg/database` (ConfigureMongo, Connect, GetDBConnection — mongo-driver **v1**),
-  `pkg/utils/logger`, `pkg/utils/config` (GetEnv), `pkg/oauth` (Google/Microsoft/Apple verifiers).
+Reference (read-only): `~/repos/dbcpro/backend/{user,common,admin}` and
+`~/repos/dbcpro/frontend/{common,reactjs/user,reactjs/admin}`; `~/repos/infra/golang/pkg/{http,
+middleware,database,utils/logger}` for the shape of the helpers we re-implement in `common`.
 
-## Target layout (single service, mirrors `dbcpro/backend/user`)
+## Backend target layout
 
 ```
 backend/
-  go.mod                        module gitlab.tezminds.com/smart-receipt/backend ; go 1.25.0
-                                replace gitlab.tezminds.com/infra/golang => ../../infra/golang
-  Makefile                      build / run / dev(air) / test / ensure-indexes
-  .env.example                  bootstrap keys + documented optional keys
-  cmd/server/main.go            app.Run()
-  cmd/scripts/ensure-indexes/   app.ConnectForTooling + app.EnsureAllIndexes (+ category seed)
-  internal/app/server.go        Run(): boot sequence (below)
-  internal/app/indexes.go       EnsureAllIndexes, ConnectForTooling
-  internal/config/config.go     AppConfig, Load(), Reload(), GetConfigVal(env → dynamic → fallback)
-  internal/http/router/routersetup.go   InitRouter(): ConfigureAuth, Logging, LoadOpenAPIs, LoadAPIs
-  internal/http/openapi/openapi.go      GetRouteSpecs() aggregator (unauthenticated, /openapi/…)
-  internal/http/openapi/health/
-  internal/http/openapi/auth/           register, login, refresh, logout, forgot/reset, providers,
-                                        {provider}/start, {provider}/callback
-  internal/http/openapi/files/          signed local-storage file server (/openapi/files/*)
-  internal/http/api/api.go              GetRouteSpecs() aggregator (authenticated, /api/…)
-  internal/http/api/user/               /api/me, /api/me/preferences, /api/me/password, DELETE /api/me
-  internal/http/api/receipts/           /api/receipts…
-  internal/http/api/categories/         /api/categories…
-  internal/http/api/analytics/          /api/analytics/…
-  internal/pkg/config/                  BaseConfig LoadBase, dynamic system_config (GetDynamic,
-                                        InitDynamicConfig, EnsureConfigIndexes), LoadCORS
-  internal/pkg/middleware/auth.go       UserClaims{UserID,Email,Name,RegisteredClaims}, NewUserClaims,
-                                        GetUserFromContext
-  internal/pkg/models/                  user.go, receipt.go, category.go, token.go (bson v1,
-                                        primitive.ObjectID)
-  internal/pkg/validate/                email/password/objectid helpers (+ struct validation shim)
-  internal/pkg/storage/                 Provider interface, local (signed URLs), cloudinary
-  internal/pkg/extraction/              Extractor interface, gemini, fake, Pool
-  internal/pkg/mail/                    Sender: log | smtp
-  internal/services/auth/               service.go (register/login/session/refresh/reset/social),
-                                        helper.go (auth_tokens collection, EnsureIndexes), oauth.go
-  internal/services/user/               service.go, helper.go (users collection)
-  internal/services/category/           service.go, helper.go (+ Seed)
-  internal/services/receipt/            service.go (upload/extract/confirm/…), helper.go (repo)
-  internal/services/analytics/          service.go (aggregations), helper.go
+  common/                                  Go module: smartreceipt/backend/common
+    go.mod
+    pkg/http/        RouteSpec, LoadAPIs, LoadOpenAPIs, response envelope (Success/Created/
+                     NoContent/Error/ErrorWithCode/BadRequest/…/ValidationError(fields)), NewServer
+                     (graceful shutdown, CORS wrap)
+    pkg/middleware/  ConfigureAuth(secret, claimsFactory), EnsureAuth, WithTimeout,
+                     RecoveryAndClean, Logging(slog), CORS(config), RequestID
+    pkg/database/    ConfigureMongo, Connect, Disconnect, GetDBConnection (mongo-driver v2),
+                     IndexSet + EnsureIndexes helper
+    pkg/logger/      thin slog wrapper: Init, Info/Warn/Error/Debug/Fatal(ctx, msg, …)
+    pkg/config/      BaseConfig + LoadBase (.env → ENV_FILE/.env.local overlay), dynamic
+                     system_config (InitDynamicConfig, GetDynamic, Reload), LoadCORS
+    pkg/validate/    Email, Password, RequiredString, ObjectID, struct validation → fields map
+    pkg/models/      user.go, receipt.go, category.go, auth_token.go, admin_user.go, system_config.go
+    pkg/storage/     Provider interface, local (signed URLs), cloudinary
+    pkg/extraction/  Extractor interface, gemini, fake, Pool
+    pkg/mail/        Sender: log | smtp
+    services/auth/   password hashing, access JWT, opaque tokens (refresh/reset), OIDC providers,
+                     session issue/refresh/logout — reused by user and admin portals
+    services/user/   users collection access (FindByID/Email/Provider, Create, Update, Link, Delete)
+    services/category/  categories collection (+ Seed of system defaults)
+    services/receipt/   receipts collection (repo-level helpers used by user API and admin stats)
+  user/                                    Go module: smartreceipt/backend/user  (replace ../common)
+    go.mod, Makefile, .env.example
+    cmd/server/main.go                     app.Run()
+    cmd/scripts/ensure-indexes/main.go     app.ConnectForTooling + app.EnsureAllIndexes (+ seed)
+    internal/app/{server.go,indexes.go}
+    internal/config/config.go              AppConfig, Load, Reload, GetConfigVal
+    internal/http/router/routersetup.go
+    internal/http/openapi/{openapi.go,health,auth,files}
+    internal/http/api/{api.go,user,receipts,categories,analytics}
+    internal/pkg/middleware/auth.go        UserClaims{UserID,Email,Name} + NewUserClaims + GetUserFromContext
+    internal/services/{receipt,analytics}  user-portal business logic (upload/extract/confirm, aggregates)
+  admin/                                   Go module: smartreceipt/backend/admin (replace ../common)
+    same skeleton as user: cmd/server, cmd/scripts/ensure-indexes, internal/{app,config,http,pkg,services}
+    Phase 2.5 scope: /openapi/health, /openapi/admin/login (admin_users collection, argon2id,
+    AdminClaims), /api/admin/me, /api/admin/users (list/search users), /api/admin/stats
+    (user count, receipts count, extraction failures), /api/admin/system-config (get/set keys).
+    Default port 8091.
 ```
 
-Mapping from the current code:
-| Current | Target |
+Mapping from the current flat code:
+| Current `backend/internal/…` | Target |
 |---|---|
-| `internal/server` (chi, JSON helpers, Validate) | infra `gohttp` + `internal/pkg/validate`; drop |
-| `internal/db` | infra `pkg/database`; drop |
-| `internal/auth/{service,oauth}.go` | `internal/services/auth/{service,oauth}.go` |
-| `internal/auth/{jwt,password,tokens}.go` | `internal/services/auth/helper.go` (+ `internal/pkg/middleware/auth.go` for claims) |
-| `internal/auth/handler.go` | `internal/http/openapi/auth/auth.go` + `internal/http/api/user/user.go` |
-| `internal/users/{model,repo,handler}.go` | `internal/pkg/models/user.go`, `internal/services/user/*`, `internal/http/api/user/*` |
-| `internal/categories/*` | `internal/pkg/models/category.go`, `internal/services/category/*`, `internal/http/api/categories/*` |
-| `internal/receipts/*` | `internal/pkg/models/receipt.go`, `internal/services/receipt/*`, `internal/http/api/receipts/*` |
-| `internal/analytics/*` | `internal/services/analytics/*`, `internal/http/api/analytics/*` |
-| `internal/storage`, `internal/extraction`, `internal/mail` | `internal/pkg/{storage,extraction,mail}` |
+| `server` (chi, JSON helpers, Validate) | `common/pkg/http`, `common/pkg/validate` |
+| `db` | `common/pkg/database` |
+| `config` | `common/pkg/config` (base + dynamic) + `user/internal/config` (AppConfig) |
+| `auth/{password,jwt,tokens,oauth,service}.go` | `common/services/auth` |
+| `auth/handler.go` | `user/internal/http/openapi/auth` + `user/internal/http/api/user` |
+| `auth/middleware.go` | `common/pkg/middleware` (EnsureAuth) + `user/internal/pkg/middleware/auth.go` (claims) |
+| `users/{model,repo}.go`, `users/handler.go` | `common/pkg/models/user.go`, `common/services/user`, `user/internal/http/api/user` |
+| `categories/*` | `common/pkg/models/category.go`, `common/services/category`, `user/internal/http/api/categories` |
+| `receipts/{model,repo}.go` | `common/pkg/models/receipt.go`, `common/services/receipt` |
+| `receipts/{service,handler}.go` | `user/internal/services/receipt`, `user/internal/http/api/receipts` |
+| `analytics/*` | `user/internal/services/analytics`, `user/internal/http/api/analytics` |
+| `storage`, `extraction`, `mail` | `common/pkg/{storage,extraction,mail}` |
 
-## Rules to carry over from dbc-pro
-
-1. **No index builds on the boot path.** `Run()` may only *check* indexes and warn. Index creation
-   and the category seed live in `app.EnsureAllIndexes`, run by `cmd/scripts/ensure-indexes`
-   (`make ensure-indexes`) before starting the server.
-2. **Boot sequence in `app.Run()`**: `config.Load()` → `logger.InitLogger(nil,nil,"")` →
-   `db.ConfigureMongo` + `db.Connect()` → `InitDynamicConfig(mongoDB)` (warn on failure) →
-   `config.Reload()` → validate production secrets → init storage provider + extractor + worker
-   pool (workerCtx, stopped in defer) → `router.InitRouter()` → `LoadCORS` →
-   `gohttp.NewServer(gohttp.ServerConfig{Port, LogFile: "logs/app.log", CORSConfig}, r).Run()`.
-3. **Config layering**: `.env` (bootstrap: `ENV`, `PORT`, `MONGO_URI`, `MONGO_DATABASE`,
-   `JWT_SECRET`) → `system_config` collection (dynamic) → code defaults, via `GetConfigVal`.
-   For local dev it is fine to put every key in `.env.local`; document all keys in `.env.example`.
+Rules carried over from dbc-pro:
+1. **No index builds on the boot path.** `app.Run()` may only check + warn. Index creation and the
+   category seed run in `cmd/scripts/ensure-indexes` (`make ensure-indexes`).
+2. **Boot sequence**: `config.Load()` → `logger.Init()` → `database.ConfigureMongo` + `Connect()` →
+   `InitDynamicConfig` (warn on failure) → `config.Reload()` → validate production secrets →
+   storage + extractor + worker pool (workerCtx, stopped in defer) → `router.InitRouter()` →
+   `LoadCORS` → `gohttp.NewServer(ServerConfig{Port, CORS}, r).Run()`.
+3. **Config layering**: `.env` bootstrap (`ENV`, `PORT`, `MONGO_URI`, `MONGO_DATABASE`, `JWT_SECRET`)
+   → `system_config` collection → code defaults, via `GetConfigVal`. Local dev may put every key
+   in `.env.local`; `.env.example` documents all keys.
 4. **Handlers**: package-level `var svc = domain.New()`, `GetRouteSpecs() []gohttp.RouteSpec`,
-   `handleX(svc) http.HandlerFunc` closures, `chi.URLParam` for params, claims via
-   `middleware.GetUserFromContext(ctx)`. Responses via `gohttp.Success/Created/NoContent/Error/
-   ErrorWithCode/BadRequest/...`. Validation failures: 422 with
-   `{success:false, error, code:"validation_failed", fields:{...}}` (use `gohttp.JSON` with a map).
-5. **Services**: `Service` struct + `New()`; Mongo access in `helper.go` through
-   `db.GetDBConnection().Collection(name)`; `EnsureIndexes(ctx)` per service; models in
-   `internal/pkg/models`.
-6. **Auth**: keep our semantics (access JWT 15m + rotating httpOnly refresh cookie with grace,
-   OIDC via go-oidc, argon2id) but issue tokens with `UserClaims` so infra `EnsureAuth` validates
-   them. Cookie path becomes `/openapi/auth`. Multipart upload routes set `TimeOut: 120`.
-7. **Paths**: unauthenticated under `/openapi/…`, authenticated under `/api/…` (no `/api/v1`).
-   Health at `GET /openapi/health`.
+   `handleX(svc) http.HandlerFunc` closures, claims via `middleware.GetUserFromContext`. Responses
+   via the `common/pkg/http` envelope `{success, data, error, code}`; validation → 422 with `fields`.
+5. **Services**: `Service` struct + `New()`; collection access in `helper.go` via
+   `database.GetDBConnection().Collection(name)`; `EnsureIndexes(ctx)` per service.
+6. **Auth semantics unchanged**: access JWT 15m + rotating httpOnly refresh cookie (30s grace),
+   go-oidc social login, argon2id. Tokens carry `UserClaims` so `EnsureAuth` validates them.
+   Cookie path `/openapi/auth`. Multipart routes set `TimeOut: 120`.
+7. **Paths**: `/openapi/…` unauthenticated, `/api/…` authenticated. Health `GET /openapi/health`.
 
-## Frontend changes required
+Keep mongo-driver **v2** (we own `common/pkg/database`, so there is no reason to downgrade).
 
-- `lib/api/client.ts`: `BASE = ''`; feature api modules use `/openapi/auth/…` and `/api/…`.
-  Unwrap the envelope: return `json.data`; on `!success` throw `ApiRequestError{status, code,
-  message: error, fields}`. Refresh endpoint: `POST /openapi/auth/refresh`.
-- `vite.config.ts` proxy: both `/api` and `/openapi` → `http://localhost:8090`.
-- `authApi.oauthStartUrl` → `/openapi/auth/${provider}/start`; API callback redirect unchanged
-  (`APP_URL/auth/callback`).
-- Image URLs come from the API (`/openapi/files/...` in local mode) — no change.
+## Frontend target layout
+
+```
+frontend/
+  package.json                npm workspaces: ["common", "user", "admin"]; root scripts fan out
+  common/                     package @expenselens/common (no build step; consumed via alias)
+    package.json, tsconfig.json, tailwind.preset.css (shared @theme tokens + utilities)
+    src/api/client.ts         fetch wrapper, envelope unwrap, refresh single-flight (base path
+                              configurable: user → /openapi,/api ; admin → /openapi/admin,/api/admin)
+    src/auth/                 AuthProvider/useAuth generic over a User type, RequireAuth, GuestOnly
+    src/theme/                ThemeProvider, themeContext, useTheme
+    src/ui/                   Button, Field/Input/Select, Toggle, Alert, Skeleton, EmptyState,
+                              Chip, Modal/ConfirmDialog, PageHeader, StatusBadge
+    src/charts/               StatTile, TrendChart, CategoryDonut, donutSlices
+    src/format/               money.ts, date.ts (+ tests)
+    src/hooks/                useDebounce
+    src/categories/           colors.ts (validated palette), CategoryIcon/Badge, types
+    src/index.ts
+  user/                       the current app (Vite): src/app, src/features/{auth,dashboard,upload,
+                              receipts,analytics,budgets,warranty,categories,settings,notifications,
+                              reports}; imports shared code from '@common/…'; port 5173
+  admin/                      new Vite app: login, dashboard (stats), users list, system config
+                              editor; imports '@common/…'; port 5174; proxies /openapi + /api → :8091
+```
+
+Wiring: each app's `vite.config.ts` sets `resolve.alias['@common'] = ../common/src` and
+`server.fs.allow` includes `../common`; `tsconfig.app.json` `paths` `{"@common/*": ["../common/src/*"]}`;
+Tailwind v4 `@import '../../common/tailwind.preset.css'` from each app's `index.css` so tokens stay
+single-sourced. Root `package.json` scripts: `dev:user`, `dev:admin`, `build`, `lint`, `test`.
+
+Frontend API changes: `BASE=''`; user endpoints become `/openapi/auth/…`, `/api/…`; unwrap
+`json.data`; on `!success` throw `ApiRequestError{status, code, message: error, fields}`;
+Vite proxy forwards both `/api` and `/openapi`.
+
+## Root tooling
+- Root `Makefile`: `dev` (user backend :8090 + user frontend :5173), `dev-admin` (admin backend
+  :8091 + admin frontend :5174), `test`, `lint`, `build`, `ensure-indexes` (both services).
+- `docker-compose.yml` unchanged (Mongo only).
 
 ## Verification checklist
+- `cd backend/common && go test ./...`; `cd backend/user && go build ./... && go vet ./... && go test ./...`;
+  same for `backend/admin`.
+- `make ensure-indexes`, then `EXTRACTOR=fake make dev-backend` → `GET :8090/openapi/health`
+  returns `{success:true,data:{status:"healthy"}}`; admin `:8091/openapi/health` likewise.
+- API smoke (44 checks) adapted to new paths + envelope; Playwright flows (auth/settings, full
+  receipt flow) at 1280px and 400px; admin login + users list smoke.
+- Commit as "Restructure to user/common/admin layout (Phase 2.5)".
 
-- `go build ./... && go vet ./... && go test ./...` in `backend/` (keep the existing unit tests:
-  password/JWT, local storage, extraction parseWire, analytics range/rollup).
-- `make ensure-indexes` then `EXTRACTOR=fake make run` → `GET /openapi/health` returns
-  `{success:true,data:{status:"healthy"}}`.
-- Re-run the API smoke (44 checks) adapted to new paths + envelope, then the Playwright flows
-  (auth/settings, full receipt flow) at 1280px and 400px. Commit as
-  "Restructure backend to dbc-pro layout".
-
-## Non-goals (for this restructure)
-- No admin/help services, no Postgres, no workspace/tenant middleware, no plan gates.
-- No behaviour changes beyond paths and response envelope.
+## Non-goals for Phase 2.5
+- No Postgres, no workspaces/tenants, no plan gates, no help portal.
+- No behaviour changes in the user portal beyond paths and envelope.

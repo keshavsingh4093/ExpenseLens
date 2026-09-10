@@ -4,8 +4,9 @@ Rewrite this file (do not append) at the end of each session or when context nea
 
 ## Last updated
 2026-09-10 — Phases 0, 1, 2 complete and committed (4 commits on local `main`, no remote by
-choice). NEXT: Phase 2.5, restructure the backend to dbc-pro conventions — spec in
-`docs/BACKEND_RESTRUCTURE.md`. Do it before Phase 3.
+choice). NEXT: Phase 2.5, restructure BOTH backend and frontend into `user`/`common`/`admin` per
+dbc-pro conventions, with no code from outside this repo — spec in `docs/BACKEND_RESTRUCTURE.md`.
+Do it before Phase 3.
 
 ## Status by phase
 - Phase 0 Scaffolding: done
@@ -61,9 +62,10 @@ Placeholders still: Analytics, Budgets, Categories, Warranty, Reports, Notificat
   exists. Consumer Google AI Pro plan ≠ API quota.
 
 ## Next steps (exact)
-1. Phase 2.5: follow `docs/BACKEND_RESTRUCTURE.md` end to end (read `~/repos/dbcpro/backend/user`
-   and `~/repos/infra/golang/pkg/{http,middleware,database}` first). Commit when smoke + Playwright
-   pass. Update this file.
+1. Phase 2.5: follow `docs/BACKEND_RESTRUCTURE.md` end to end. Read `~/repos/dbcpro/backend/
+   {user,common,admin}` and `~/repos/dbcpro/frontend/{common,reactjs/user}` for shape only; write
+   our own helpers in `backend/common` (do not `replace` or copy from `~/repos/infra`). Commit
+   when smoke + Playwright pass. Update this file.
 2. Phase 3 backend (in the NEW layout): `internal/budgets` (model, repo, upsert, list by month with spent via
    analytics), `internal/warranties`, `internal/notifications` (+ daily scheduler goroutine for
    budget 80/100% and warranty 30/7-day), `internal/reports` (CSV, PDF). Wire + indexes + cascade.

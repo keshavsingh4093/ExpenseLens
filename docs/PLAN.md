@@ -9,8 +9,8 @@ Analytics, Budgets, Warranty, Settings, Categories, Reports, Notifications.
 
 | Area | Decision |
 |---|---|
-| Frontend | React 19, Vite, TypeScript, Tailwind v4, React Router v7, TanStack Query v5, react-hook-form + zod, Recharts, react-dropzone, lucide-react |
-| Backend | Go, chi, MongoDB. **Layout and infra library follow dbc-pro conventions** (`docs/BACKEND_RESTRUCTURE.md`); until that restructure lands the code uses the original flat `internal/<domain>` layout with mongo-driver v2 |
+| Frontend | React 19, Vite, TypeScript, Tailwind v4, React Router v7, TanStack Query v5, react-hook-form + zod, Recharts, react-dropzone, lucide-react. **`frontend/{common,user,admin}`** npm workspaces; shared UI/api/theme in `common` (alias `@common`) |
+| Backend | Go, chi, MongoDB driver v2. **`backend/{common,user,admin}` per dbc-pro conventions** (`docs/BACKEND_RESTRUCTURE.md`); shared code in `common`; no code from outside this repo. Until Phase 2.5 lands the code is the original flat `backend/internal/<domain>` layout |
 | Database | MongoDB (docker-compose locally, Atlas or self-hosted in prod) |
 | File storage | Cloudinary via `storage.Provider` interface; `local` provider for dev/tests |
 | Extraction | Gemini API via `extraction.Extractor` interface. Default model `gemini-3.1-pro-preview`; `gemini-3.7-flash` as cheaper option. Model name from `GEMINI_MODEL` env. |
@@ -205,15 +205,17 @@ on final failure receipt → `failed` with error stored, notification emitted.
       (budget widget reads Phase 3 data; render empty state until then)
 - [x] `analytics/summary` + `trend` + `categories` + `merchants` + `stats` endpoints
 
-### Phase 2.5 — Restructure backend to dbc-pro layout (decided 2026-09-10)
+### Phase 2.5 — Restructure to user/common/admin layout (decided 2026-09-10)
 Spec: `docs/BACKEND_RESTRUCTURE.md`. Do this BEFORE Phase 3 so new domains land in the final shape.
-- [ ] New go.mod (`gitlab.tezminds.com/smart-receipt/backend`, replace → `../../infra/golang`), mongo-driver v1
-- [ ] `internal/pkg/{config,middleware,models,validate,storage,extraction,mail}` per spec
-- [ ] `internal/services/{auth,user,category,receipt,analytics}` (service.go + helper.go)
-- [ ] `internal/http/{openapi,api,router}` with RouteSpecs and aggregators; `internal/app` boot + indexes
-- [ ] `cmd/server`, `cmd/scripts/ensure-indexes`, Makefile, `.env.example`
-- [ ] Frontend client/proxy updated to `/openapi` + `/api` and the `{success,data,error,code}` envelope
-- [ ] Unit tests ported; API smoke + Playwright flows green; commit
+Rules: `user`/`common`/`admin` on both sides; shared things in `common`; no code from outside this
+repository (no local `replace` to sibling repos, no copied files; registry packages are fine).
+- [ ] `backend/common` module: pkg/{http,middleware,database,logger,config,validate,models,storage,extraction,mail}, services/{auth,user,category,receipt}
+- [ ] `backend/user` module: cmd/server, cmd/scripts/ensure-indexes, internal/{app,config,http/{openapi,api,router},pkg/middleware,services/{receipt,analytics}}
+- [ ] `backend/admin` module skeleton: health, admin login (admin_users), /api/admin/{me,users,stats,system-config}; port 8091
+- [ ] `frontend/common` workspace: ui, charts, api client, auth provider, theme, format, categories palette
+- [ ] `frontend/user` (current app moved; imports `@common`) and `frontend/admin` (login, dashboard, users, system config)
+- [ ] Root Makefile + npm workspaces; `.env.example` per service
+- [ ] Unit tests ported; API smoke + Playwright flows green (user); admin smoke; commit
 
 ### Phase 3 — Insights and tracking
 - [ ] Budgets: API + Budgets screen (month nav, progress bars, add/edit)
@@ -230,6 +232,13 @@ Spec: `docs/BACKEND_RESTRUCTURE.md`. Do this BEFORE Phase 3 so new domains land 
 Chart colors: the 8 system categories use the validated dataviz palette (see
 `frontend/src/features/categories/colors.ts`, light + dark steps); "others" and custom categories
 are neutral/stored. Keep this when adding charts in Phase 3.
+
+### Phase 5 — Admin portal (after Phase 3)
+- [ ] User management: search, view, disable/enable, delete with cascade, reset password link
+- [ ] System config editor (dynamic `system_config` keys, sensitive masking, reload endpoint)
+- [ ] Extraction monitoring: volume, failure rate, model, average confidence; retry failed
+- [ ] Default categories management (system category CRUD)
+- [ ] Audit log of admin actions
 
 ### Phase 4 — Suggested features (post-MVP)
 - [ ] Duplicate detection UI prompt on upload
