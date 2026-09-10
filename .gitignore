@@ -3,16 +3,17 @@
 .env.*
 !.env.example
 
-# backend
-backend/bin/
-backend/tmp/
-backend/.data/
-backend/coverage.out
+# backend (per module)
+backend/*/bin/
+backend/*/tmp/
+backend/*/.data/
+backend/*/coverage.out
 
-# frontend
+# frontend (workspaces)
 frontend/node_modules/
-frontend/dist/
-frontend/.vite/
+frontend/*/node_modules/
+frontend/*/dist/
+**/.vite/
 
 # misc
 .DS_Store

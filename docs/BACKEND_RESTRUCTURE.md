@@ -1,5 +1,7 @@
 # Restructure → dbc-pro conventions (backend AND frontend)
 
+**Status: landed 2026-09-10** (Phase 2.5). This document stays as the layout/convention reference.
+
 Decided 2026-09-10. Three rules from the user:
 1. `backend/` and `frontend/` each get a **`user` / `common` / `admin`** split.
 2. Everything shared across portals lives in **`common`**.

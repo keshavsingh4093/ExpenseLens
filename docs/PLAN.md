@@ -10,13 +10,13 @@ Analytics, Budgets, Warranty, Settings, Categories, Reports, Notifications.
 | Area | Decision |
 |---|---|
 | Frontend | React 19, Vite, TypeScript, Tailwind v4, React Router v7, TanStack Query v5, react-hook-form + zod, Recharts, react-dropzone, lucide-react. **`frontend/{common,user,admin}`** npm workspaces; shared UI/api/theme in `common` (alias `@common`) |
-| Backend | Go, chi, MongoDB driver v2. **`backend/{common,user,admin}` per dbc-pro conventions** (`docs/BACKEND_RESTRUCTURE.md`); shared code in `common`; no code from outside this repo. Until Phase 2.5 lands the code is the original flat `backend/internal/<domain>` layout |
+| Backend | Go, chi, MongoDB driver v2. **`backend/{common,user,admin}` per dbc-pro conventions** (`docs/BACKEND_RESTRUCTURE.md`, landed 2026-09-10); shared code in `common` (own http/middleware/database/logger/config helpers); no code from outside this repo. Paths `/openapi/…` (open) and `/api/…` (auth); envelope `{success,data,error,code,fields}` |
 | Database | MongoDB (docker-compose locally, Atlas or self-hosted in prod) |
 | File storage | Cloudinary via `storage.Provider` interface; `local` provider for dev/tests |
 | Extraction | Gemini API via `extraction.Extractor` interface. Default model `gemini-3.1-pro-preview`; `gemini-3.7-flash` as cheaper option. Model name from `GEMINI_MODEL` env. |
 | Auth | Email/password (argon2id), Google, Microsoft, Apple. Access JWT 15 min + refresh token 30 days in httpOnly cookie, rotated on use. |
 | Mobile | Responsive web only. Bottom tab bar under `md` breakpoint, sidebar above. Camera via `<input capture>`. |
-| Ports | API `:8090` (8080 is taken on the dev machine), Vite `:5173` proxies `/api` to it |
+| Ports | User API `:8090` (8080 is taken on the dev machine), user Vite `:5173` proxies `/api` + `/openapi` to it. Admin API `:8091`, admin Vite `:5174` |
 | Money | int64 paise + currency code. Display via `Intl.NumberFormat`. |
 | Currency/locale | INR, Asia/Kolkata defaults; user-configurable in Settings. |
 
@@ -33,7 +33,8 @@ browser ──HTTPS──> Go API (chi) ──> MongoDB
                      └─> extraction.Extractor (Gemini)  [async worker pool]
 ```
 
-- Single Go binary serves `/api/v1/*`. In prod it can also serve the built frontend from `/`.
+- Two Go binaries (`backend/user`, `backend/admin`) share `backend/common`. Routes are `/openapi/*`
+  (unauthenticated) and `/api/*` (bearer JWT). In prod each can also serve its built frontend from `/`.
 - Upload flow: client POSTs file → API stores original via `storage.Provider` → creates receipt with
   `status: "processing"` → enqueues extraction job (in-process worker pool, channel-backed; can be
   swapped for a queue later) → worker sends file to Gemini with a JSON schema → receipt updated with
@@ -42,39 +43,33 @@ browser ──HTTPS──> Go API (chi) ──> MongoDB
 - Idempotent uploads: SHA-256 of file bytes stored on the receipt; duplicate hash for the same user
   returns the existing receipt with a `duplicate: true` flag (Phase 4 turns this into a UI prompt).
 
-### Backend layout
+### Backend layout (Phase 2.5, see `docs/BACKEND_RESTRUCTURE.md`)
 ```
 backend/
-  cmd/api/main.go
-  internal/
-    config/        env → Config struct
-    server/        router, middleware (auth, logging, CORS, recover, request id), error helpers
-    db/            mongo client, index creation
-    auth/          password hashing, JWT, refresh tokens, oauth providers (google, microsoft, apple)
-    users/         profile, preferences
-    receipts/      upload, CRUD, list/search/filter, items, tags, notes, images
-    extraction/    Extractor interface, gemini impl, prompt + JSON schema, worker pool
-    storage/       Provider interface, cloudinary impl, local impl
-    categories/    system + user categories
-    budgets/       per-category monthly budgets
-    warranties/    warranty entries, linked to receipt items optionally
-    analytics/     aggregation pipelines for dashboard/analytics
-    notifications/ in-app notifications
-    reports/       CSV / PDF export
-  migrations/      index definitions (applied at boot, idempotent)
+  common/   module smartreceipt/backend/common
+    pkg/{http,middleware,database,logger,config,validate,models,storage,extraction,mail}
+    services/{auth,user,category,receipt,systemconfig,adminuser}   collection access + shared logic
+  user/     module smartreceipt/backend/user (replace ../common)   API :8090
+    cmd/server, cmd/scripts/ensure-indexes
+    internal/{app,config,http/{router,openapi/*,api/*},pkg/middleware,services/{auth,receipt,analytics}}
+    (Phase 3 adds internal/services/{budget,warranty,notification,report} + internal/http/api/*)
+  admin/    module smartreceipt/backend/admin (replace ../common)  API :8091
+    cmd/server, cmd/scripts/{ensure-indexes,create-admin}
+    internal/{app,config,http/{router,openapi/*,api/*},pkg/middleware,services/{adminauth,stats}}
 ```
+Indexes are never built on the boot path: `make ensure-indexes` (per service) builds them and seeds
+the system categories; `app.Run()` only warns about missing ones.
 
-### Frontend layout
+### Frontend layout (npm workspaces: `common`, `user`, `admin`)
 ```
-frontend/src/
-  app/            router, providers, layout shells (Sidebar, BottomTabs)
-  components/ui/  Button, Card, Input, Select, Badge, Modal, Progress, Tabs, Skeleton
-  features/
-    auth/  dashboard/  upload/  receipts/  analytics/  budgets/  warranty/  categories/
-    settings/  notifications/  reports/
-  lib/api/        fetch wrapper with auth refresh, typed endpoints, query keys
-  lib/format/     money, dates
-  hooks/
+frontend/
+  common/src/     @expenselens/common, consumed via the `@common` alias (no build step)
+    api/          fetch wrapper (envelope unwrap, single-flight refresh), queryClient
+    auth/         AuthProvider<TUser>, useAuth, RequireAuth, GuestOnly
+    theme/ ui/ charts/ format/ hooks/ categories/ analytics/types
+  common/tailwind.preset.css   shared @theme tokens, dark variant, card/text-muted utilities
+  user/src/       app/ (shell, router), features/{auth,dashboard,upload,receipts,categories,settings,…}
+  admin/src/      app/ (AdminShell, router), features/{auth,dashboard,users,config}
 ```
 
 ## 3. Data model (MongoDB)
@@ -117,13 +112,24 @@ Shopping, Medical, Entertainment, Travel, Utilities, Groceries, Others.
 `userId`, `type: budget_alert|warranty_expiring|extraction_done|extraction_failed|weekly_summary`,
 `title`, `body`, `data`, `readAt?`.
 
-## 4. API surface (`/api/v1`)
+## 4. API surface
 
-Auth: `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `POST /auth/refresh`,
-`GET /auth/{google|microsoft|apple}/start`, `GET|POST /auth/{provider}/callback`,
-`POST /auth/forgot-password`, `POST /auth/reset-password`, `GET /auth/me`.
+Unauthenticated routes live under `/openapi`, authenticated ones under `/api`. Responses use
+`{success, data, error, code, fields}`; the lists below omit the prefix.
 
-Users: `GET/PATCH /me`, `PATCH /me/preferences`, `POST /me/password`, `DELETE /me`.
+Auth (`/openapi/auth`): `POST /register`, `POST /login`, `POST /logout`, `POST /refresh`,
+`GET /providers`, `GET /{google|microsoft|apple}/start`, `GET|POST /{provider}/callback`,
+`POST /forgot-password`, `POST /reset-password`. Refresh cookie path is `/openapi/auth`.
+
+Users (`/api/me`): `GET/PATCH /me`, `PATCH /me/preferences`, `POST /me/password`, `DELETE /me`.
+
+Files: `GET /openapi/files/*` (signed URLs, local storage provider only).
+Ops: `POST /openapi/config/reload` (header `X-Config-Reload-Secret`, only when `CONFIG_RELOAD_SECRET` set).
+
+Admin API (`:8091`): `POST /openapi/admin/login`, `POST /openapi/admin/auth/{refresh,logout}`,
+`GET /api/admin/me`, `GET /api/admin/users?q&page&pageSize`, `GET /api/admin/users/{id}`,
+`GET /api/admin/stats`, `GET /api/admin/system-config`, `PUT|DELETE /api/admin/system-config/{key}`,
+`POST /api/admin/system-config/reload`.
 
 Receipts: `POST /receipts/upload` (multipart, 1..n files or pdf) → `{receiptId, status}`;
 `GET /receipts?q&category&from&to&sort&page`; `GET /receipts/{id}`; `PATCH /receipts/{id}`;
@@ -209,13 +215,13 @@ on final failure receipt → `failed` with error stored, notification emitted.
 Spec: `docs/BACKEND_RESTRUCTURE.md`. Do this BEFORE Phase 3 so new domains land in the final shape.
 Rules: `user`/`common`/`admin` on both sides; shared things in `common`; no code from outside this
 repository (no local `replace` to sibling repos, no copied files; registry packages are fine).
-- [ ] `backend/common` module: pkg/{http,middleware,database,logger,config,validate,models,storage,extraction,mail}, services/{auth,user,category,receipt}
-- [ ] `backend/user` module: cmd/server, cmd/scripts/ensure-indexes, internal/{app,config,http/{openapi,api,router},pkg/middleware,services/{receipt,analytics}}
-- [ ] `backend/admin` module skeleton: health, admin login (admin_users), /api/admin/{me,users,stats,system-config}; port 8091
-- [ ] `frontend/common` workspace: ui, charts, api client, auth provider, theme, format, categories palette
-- [ ] `frontend/user` (current app moved; imports `@common`) and `frontend/admin` (login, dashboard, users, system config)
-- [ ] Root Makefile + npm workspaces; `.env.example` per service
-- [ ] Unit tests ported; API smoke + Playwright flows green (user); admin smoke; commit
+- [x] `backend/common` module: pkg/{http,middleware,database,logger,config,validate,models,storage,extraction,mail}, services/{auth,user,category,receipt,systemconfig,adminuser}
+- [x] `backend/user` module: cmd/server, cmd/scripts/ensure-indexes, internal/{app,config,http/{openapi,api,router},pkg/middleware,services/{auth,receipt,analytics}}
+- [x] `backend/admin` module skeleton: health, admin login (admin_users, refresh cookie), /api/admin/{me,users,stats,system-config}; port 8091; `create-admin` script
+- [x] `frontend/common` workspace: ui, charts, api client, auth provider, theme, format, categories palette
+- [x] `frontend/user` (current app moved; imports `@common`) and `frontend/admin` (login, dashboard, users, system config)
+- [x] Root Makefile + npm workspaces; `.env.example` per service
+- [x] Unit tests ported; API smoke (76 checks) + Playwright flows green (user); admin smoke (27 checks) + admin Playwright; commit
 
 ### Phase 3 — Insights and tracking
 - [ ] Budgets: API + Budgets screen (month nav, progress bars, add/edit)
@@ -230,8 +236,12 @@ repository (no local `replace` to sibling repos, no copied files; registry packa
 - [ ] Mobile "More" screen (links to Budgets, Categories, Warranty, Reports, Notifications, Settings)
 
 Chart colors: the 8 system categories use the validated dataviz palette (see
-`frontend/src/features/categories/colors.ts`, light + dark steps); "others" and custom categories
+`frontend/common/src/categories/colors.ts`, light + dark steps); "others" and custom categories
 are neutral/stored. Keep this when adding charts in Phase 3.
+
+Phase 3 lands in the new layout: collection access in `backend/common/services/<domain>`, business
+logic + handlers in `backend/user/internal/{services,http/api}/<domain>`, screens in
+`frontend/user/src/features/<domain>`, shared widgets in `frontend/common/src`.
 
 ### Phase 5 — Admin portal (after Phase 3)
 - [ ] User management: search, view, disable/enable, delete with cascade, reset password link
