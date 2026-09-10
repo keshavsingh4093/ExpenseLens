@@ -191,17 +191,19 @@ on final failure receipt → `failed` with error stored, notification emitted.
       Profile / Security / Preferences screens (+ Notifications, Data & Privacy, static pages)
 
 ### Phase 2 — Core receipt flow
-- [ ] `storage.Provider` interface + local impl + Cloudinary impl + tests with local impl
-- [ ] `extraction.Extractor` interface + Gemini impl + worker pool + fake extractor for tests
-- [ ] Upload endpoint (image/PDF, multi-file, size/type validation, hash, duplicate check)
-- [ ] Receipt CRUD, confirm, re-extract, image add/remove, list with search/filter/sort/pagination
-- [ ] Categories seed + CRUD
-- [ ] Frontend: Upload screen (dropzone, camera, PDF, recent uploads), Review screen (image +
+- [x] `storage.Provider` interface + local impl + Cloudinary impl + tests with local impl
+      (Cloudinary impl compiles but is untested against a real account)
+- [x] `extraction.Extractor` interface + Gemini impl + worker pool + fake extractor for tests
+      (Gemini impl untested against the live API until a key is provided)
+- [x] Upload endpoint (image/PDF, multi-file, size/type validation, hash, duplicate check)
+- [x] Receipt CRUD, confirm, re-extract, image add/remove, list with search/filter/sort/pagination
+- [x] Categories seed + CRUD (no Categories screen yet; see Phase 3)
+- [x] Frontend: Upload screen (dropzone, camera, PDF, recent uploads), Review screen (image +
       editable fields + items editor), Receipts list (search, chips, sort), Receipt Details
       (carousel, items, notes, tags, edit/delete)
-- [ ] Dashboard: KPI tiles, trend chart, category donut, recent receipts, budget overview
+- [x] Dashboard: KPI tiles, trend chart, category donut, recent receipts, budget overview
       (budget widget reads Phase 3 data; render empty state until then)
-- [ ] `analytics/summary` + `trend` + `categories` endpoints (needed by dashboard)
+- [x] `analytics/summary` + `trend` + `categories` + `merchants` + `stats` endpoints
 
 ### Phase 3 — Insights and tracking
 - [ ] Budgets: API + Budgets screen (month nav, progress bars, add/edit)
@@ -211,6 +213,13 @@ on final failure receipt → `failed` with error stored, notification emitted.
       (scheduler goroutine, daily)
 - [ ] Reports: CSV export; monthly PDF summary
 - [ ] Settings: Notifications, Data & Privacy (export all data, delete account), Help, About
+      (pages exist since Phase 1; Export needs Reports)
+- [ ] Categories screen (list system + custom, add/edit/delete custom with icon + color)
+- [ ] Mobile "More" screen (links to Budgets, Categories, Warranty, Reports, Notifications, Settings)
+
+Chart colors: the 8 system categories use the validated dataviz palette (see
+`frontend/src/features/categories/colors.ts`, light + dark steps); "others" and custom categories
+are neutral/stored. Keep this when adding charts in Phase 3.
 
 ### Phase 4 — Suggested features (post-MVP)
 - [ ] Duplicate detection UI prompt on upload

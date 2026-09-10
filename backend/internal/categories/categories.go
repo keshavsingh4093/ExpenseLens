@@ -30,15 +30,15 @@ type Category struct {
 
 // Defaults are seeded at boot. Slugs are stable identifiers used by extraction.
 var Defaults = []Category{
-	{Name: "Food", Slug: "food", Icon: "utensils", Color: "#22c55e"},
-	{Name: "Groceries", Slug: "groceries", Icon: "shopping-basket", Color: "#84cc16"},
-	{Name: "Fuel", Slug: "fuel", Icon: "fuel", Color: "#f59e0b"},
-	{Name: "Shopping", Slug: "shopping", Icon: "shopping-bag", Color: "#3b82f6"},
-	{Name: "Medical", Slug: "medical", Icon: "heart-pulse", Color: "#8b5cf6"},
-	{Name: "Entertainment", Slug: "entertainment", Icon: "clapperboard", Color: "#ec4899"},
-	{Name: "Travel", Slug: "travel", Icon: "plane", Color: "#06b6d4"},
-	{Name: "Utilities", Slug: "utilities", Icon: "plug-zap", Color: "#64748b"},
-	{Name: "Others", Slug: "others", Icon: "circle-dashed", Color: "#f97316"},
+	{Name: "Shopping", Slug: "shopping", Icon: "shopping-bag", Color: "#2a78d6"},
+	{Name: "Fuel", Slug: "fuel", Icon: "fuel", Color: "#eb6834"},
+	{Name: "Food", Slug: "food", Icon: "utensils", Color: "#1baf7a"},
+	{Name: "Groceries", Slug: "groceries", Icon: "shopping-basket", Color: "#eda100"},
+	{Name: "Entertainment", Slug: "entertainment", Icon: "clapperboard", Color: "#e87ba4"},
+	{Name: "Travel", Slug: "travel", Icon: "plane", Color: "#008300"},
+	{Name: "Medical", Slug: "medical", Icon: "heart-pulse", Color: "#4a3aa7"},
+	{Name: "Utilities", Slug: "utilities", Icon: "plug-zap", Color: "#e34948"},
+	{Name: "Others", Slug: "others", Icon: "circle-dashed", Color: "#8a8f99"},
 }
 
 // OthersSlug is the fallback category.

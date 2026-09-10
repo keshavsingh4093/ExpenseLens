@@ -14,6 +14,11 @@ import { PreferencesPage } from '@/features/settings/PreferencesPage'
 import { NotificationsSettingsPage } from '@/features/settings/NotificationsPage'
 import { DataPrivacyPage } from '@/features/settings/DataPrivacyPage'
 import { ExportPage, HelpPage, AboutPage } from '@/features/settings/StaticPages'
+import { UploadPage } from '@/features/upload/UploadPage'
+import { DashboardPage } from '@/features/dashboard/DashboardPage'
+import { ReviewPage } from '@/features/receipts/ReviewPage'
+import { ReceiptsPage } from '@/features/receipts/ReceiptsPage'
+import { ReceiptDetailPage } from '@/features/receipts/ReceiptDetailPage'
 
 export const router = createBrowserRouter([
   {
@@ -23,10 +28,11 @@ export const router = createBrowserRouter([
         path: '/',
         element: <AppShell />,
         children: [
-          { index: true, element: <Placeholder title="Dashboard" /> },
-          { path: 'receipts', element: <Placeholder title="Receipts" /> },
-          { path: 'receipts/:id', element: <Placeholder title="Receipt Details" /> },
-          { path: 'upload', element: <Placeholder title="Upload Receipt" /> },
+          { index: true, element: <DashboardPage /> },
+          { path: 'receipts', element: <ReceiptsPage /> },
+          { path: 'receipts/:id', element: <ReceiptDetailPage /> },
+          { path: 'receipts/:id/review', element: <ReviewPage /> },
+          { path: 'upload', element: <UploadPage /> },
           { path: 'analytics', element: <Placeholder title="Analytics" /> },
           { path: 'budgets', element: <Placeholder title="Budgets" /> },
           { path: 'categories', element: <Placeholder title="Categories" /> },
