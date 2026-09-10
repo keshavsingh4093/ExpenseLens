@@ -7,6 +7,7 @@ import (
 	"smartreceipt/backend/common/pkg/config"
 	"smartreceipt/backend/common/pkg/database"
 	"smartreceipt/backend/common/pkg/logger"
+	"smartreceipt/backend/common/services/adminaudit"
 	"smartreceipt/backend/common/services/adminuser"
 	"smartreceipt/backend/common/services/auth"
 	"smartreceipt/backend/common/services/systemconfig"
@@ -16,7 +17,7 @@ import (
 
 // AllIndexSets lists the indexes the admin backend relies on.
 func AllIndexSets() []database.IndexSet {
-	return []database.IndexSet{adminuser.Indexes(), auth.TokenIndexes(), config.SystemConfigIndexes()}
+	return []database.IndexSet{adminuser.Indexes(), auth.TokenIndexes(), config.SystemConfigIndexes(), adminaudit.Indexes()}
 }
 
 // EnsureAllIndexes builds the admin backend's indexes (tooling only).
@@ -34,6 +35,7 @@ func EnsureAllIndexes(ctx context.Context) error {
 	step("adminuser.EnsureIndexes", adminuser.EnsureIndexes)
 	step("auth.EnsureIndexes", auth.EnsureIndexes)
 	step("systemconfig.EnsureIndexes", systemconfig.EnsureIndexes)
+	step("adminaudit.EnsureIndexes", adminaudit.EnsureIndexes)
 	if firstErr != nil {
 		return fmt.Errorf("ensure-indexes: one or more steps failed; first error: %w", firstErr)
 	}

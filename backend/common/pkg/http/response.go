@@ -30,6 +30,13 @@ type APIError struct {
 
 func (e *APIError) Error() string { return e.Code + ": " + e.Message }
 
+// HTTPStatus lets packages that cannot import this one (middleware) map the
+// error to a response.
+func (e *APIError) HTTPStatus() int { return e.Status }
+
+// ErrorCode returns the stable machine-readable code.
+func (e *APIError) ErrorCode() string { return e.Code }
+
 // Common error values.
 var (
 	ErrUnauthorized = &APIError{Status: http.StatusUnauthorized, Code: "unauthorized", Message: "authentication required"}

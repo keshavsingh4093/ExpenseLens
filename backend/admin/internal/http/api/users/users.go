@@ -1,39 +1,43 @@
-// Package users exposes /api/admin/users (list/search, get).
+// Package users exposes /api/admin/users: list/search, get, disable/enable,
+// delete (superadmin) and password-reset links.
 package users
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"go.mongodb.org/mongo-driver/v2/bson"
 
 	gohttp "smartreceipt/backend/common/pkg/http"
 	"smartreceipt/backend/common/pkg/validate"
-	"smartreceipt/backend/common/services/receipt"
 	usersvc "smartreceipt/backend/common/services/user"
+
+	"smartreceipt/backend/admin/internal/pkg/middleware"
+	"smartreceipt/backend/admin/internal/services/audit"
+	"smartreceipt/backend/admin/internal/services/users"
 )
 
-var (
-	users    = usersvc.New()
-	receipts = receipt.New()
-)
+var svc = users.New()
 
 // GetRouteSpecs returns the user management routes.
 func GetRouteSpecs() []gohttp.RouteSpec {
 	return []gohttp.RouteSpec{
 		{Method: "GET", Path: "/api/admin/users", Handler: handleList},
 		{Method: "GET", Path: "/api/admin/users/{id}", Handler: handleGet},
+		{Method: "POST", Path: "/api/admin/users/{id}/disable", Handler: handleDisable},
+		{Method: "POST", Path: "/api/admin/users/{id}/enable", Handler: handleEnable},
+		{Method: "POST", Path: "/api/admin/users/{id}/reset-password-link", Handler: handleResetLink},
+		{Method: "DELETE", Path: "/api/admin/users/{id}", Handler: handleDelete, TimeOut: 120,
+			Extras: []func(http.Handler) http.Handler{middleware.RequireRole(middleware.RoleSuperadmin)}},
 	}
 }
 
 func handleList(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f := usersvc.ListFilter{Query: q.Get("q")}
+	f := usersvc.ListFilter{Query: q.Get("q"), Status: q.Get("status")}
 	f.Page, _ = strconv.Atoi(q.Get("page"))
 	f.PageSize, _ = strconv.Atoi(q.Get("pageSize"))
-	rows, total, err := users.List(r.Context(), f)
+	rows, total, err := svc.List(r.Context(), f)
 	if err != nil {
 		gohttp.WriteError(w, r, err)
 		return
@@ -57,14 +61,63 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		gohttp.WriteError(w, r, err)
 		return
 	}
-	u, err := users.FindByID(r.Context(), id)
+	u, n, err := svc.Get(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, usersvc.ErrNotFound) {
-			err = gohttp.ErrNotFound
-		}
 		gohttp.WriteError(w, r, err)
 		return
 	}
-	n, _ := receipts.Count(r.Context(), bson.M{"userId": id})
 	gohttp.Success(w, map[string]any{"user": u.ToPublic(), "receiptCount": n})
+}
+
+func setDisabled(w http.ResponseWriter, r *http.Request, disabled bool) {
+	id, err := validate.ObjectID(chi.URLParam(r, "id"))
+	if err != nil {
+		gohttp.WriteError(w, r, err)
+		return
+	}
+	u, err := svc.SetDisabled(r.Context(), id, disabled)
+	if err != nil {
+		gohttp.WriteError(w, r, err)
+		return
+	}
+	action := "user.enable"
+	if disabled {
+		action = "user.disable"
+	}
+	audit.Log(r, action, audit.TargetUser, id.Hex(), map[string]any{"email": u.Email})
+	gohttp.Success(w, map[string]any{"user": u.ToPublic()})
+}
+
+func handleDisable(w http.ResponseWriter, r *http.Request) { setDisabled(w, r, true) }
+func handleEnable(w http.ResponseWriter, r *http.Request)  { setDisabled(w, r, false) }
+
+func handleResetLink(w http.ResponseWriter, r *http.Request) {
+	id, err := validate.ObjectID(chi.URLParam(r, "id"))
+	if err != nil {
+		gohttp.WriteError(w, r, err)
+		return
+	}
+	link, exp, err := svc.ResetLink(r.Context(), id)
+	if err != nil {
+		gohttp.WriteError(w, r, err)
+		return
+	}
+	// The link itself is a credential: never write it to the audit log.
+	audit.Log(r, "user.reset_link", audit.TargetUser, id.Hex(), nil)
+	gohttp.Success(w, map[string]any{"link": link, "expiresAt": exp})
+}
+
+func handleDelete(w http.ResponseWriter, r *http.Request) {
+	id, err := validate.ObjectID(chi.URLParam(r, "id"))
+	if err != nil {
+		gohttp.WriteError(w, r, err)
+		return
+	}
+	email, err := svc.Delete(r.Context(), id)
+	if err != nil {
+		gohttp.WriteError(w, r, err)
+		return
+	}
+	audit.Log(r, "user.delete", audit.TargetUser, id.Hex(), map[string]any{"email": email})
+	gohttp.NoContent(w)
 }

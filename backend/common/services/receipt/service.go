@@ -338,3 +338,200 @@ func (s *Service) ListAllForUser(ctx context.Context, uid bson.ObjectID) ([]mode
 	}
 	return out, nil
 }
+
+// ---- Admin portal helpers ----
+
+// FindByID loads a receipt regardless of owner (admin/ops).
+func (s *Service) FindByID(ctx context.Context, id bson.ObjectID) (*models.Receipt, error) {
+	var rc models.Receipt
+	if err := col().FindOne(ctx, bson.M{"_id": id}).Decode(&rc); err != nil {
+		if database.IsNoDocuments(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &rc, nil
+}
+
+// ReassignCategoryAll moves every user's receipts from one category to
+// another (system category deletion).
+func (s *Service) ReassignCategoryAll(ctx context.Context, from, to bson.ObjectID) (int64, error) {
+	res, err := col().UpdateMany(ctx, bson.M{"categoryId": from},
+		bson.M{"$set": bson.M{"categoryId": to, "updatedAt": time.Now().UTC()}})
+	if err != nil {
+		return 0, err
+	}
+	return res.ModifiedCount, nil
+}
+
+// CountByCategory returns how many receipts (all users) use the category.
+func (s *Service) CountByCategory(ctx context.Context, id bson.ObjectID) (int64, error) {
+	return col().CountDocuments(ctx, bson.M{"categoryId": id})
+}
+
+// ExtractionDay is one day of extraction volume.
+type ExtractionDay struct {
+	Date       string `bson:"_id" json:"date"`
+	Total      int64  `bson:"total" json:"total"`
+	Failed     int64  `bson:"failed" json:"failed"`
+	Processing int64  `bson:"processing" json:"processing"`
+}
+
+// ExtractionModel is the per-model breakdown.
+type ExtractionModel struct {
+	Model         string  `bson:"_id" json:"model"`
+	Total         int64   `bson:"total" json:"total"`
+	Failed        int64   `bson:"failed" json:"failed"`
+	AvgConfidence float64 `bson:"avgConfidence" json:"avgConfidence"`
+}
+
+// ExtractionTotals summarises a window.
+type ExtractionTotals struct {
+	Total         int64   `bson:"total" json:"total"`
+	Failed        int64   `bson:"failed" json:"failed"`
+	Processing    int64   `bson:"processing" json:"processing"`
+	Succeeded     int64   `bson:"succeeded" json:"succeeded"`
+	AvgConfidence float64 `bson:"avgConfidence" json:"avgConfidence"`
+	AvgAttempts   float64 `bson:"avgAttempts" json:"avgAttempts"`
+}
+
+var (
+	isFailed     = bson.M{"$cond": bson.A{bson.M{"$eq": bson.A{"$status", "failed"}}, 1, 0}}
+	isProcessing = bson.M{"$cond": bson.A{bson.M{"$eq": bson.A{"$status", "processing"}}, 1, 0}}
+	// confidence only counts for successful extractions
+	okConfidence = bson.M{"$cond": bson.A{
+		bson.M{"$and": bson.A{bson.M{"$ne": bson.A{"$status", "failed"}}, bson.M{"$gt": bson.A{"$extracted.confidence", 0}}}},
+		"$extracted.confidence", nil,
+	}}
+)
+
+// ExtractionByDay groups receipts created since the given time by UTC day.
+func (s *Service) ExtractionByDay(ctx context.Context, since time.Time) ([]ExtractionDay, error) {
+	cur, err := col().Aggregate(ctx, mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"createdAt": bson.M{"$gte": since}}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":        bson.M{"$dateToString": bson.M{"format": "%Y-%m-%d", "date": "$createdAt"}},
+			"total":      bson.M{"$sum": 1},
+			"failed":     bson.M{"$sum": isFailed},
+			"processing": bson.M{"$sum": isProcessing},
+		}}},
+		{{Key: "$sort", Value: bson.D{{Key: "_id", Value: 1}}}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out []ExtractionDay
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []ExtractionDay{}
+	}
+	return out, nil
+}
+
+// ExtractionByModel groups receipts created since the given time by the
+// model that produced (or failed) the extraction.
+func (s *Service) ExtractionByModel(ctx context.Context, since time.Time) ([]ExtractionModel, error) {
+	cur, err := col().Aggregate(ctx, mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"createdAt": bson.M{"$gte": since}, "extracted.model": bson.M{"$exists": true}}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":           "$extracted.model",
+			"total":         bson.M{"$sum": 1},
+			"failed":        bson.M{"$sum": isFailed},
+			"avgConfidence": bson.M{"$avg": okConfidence},
+		}}},
+		{{Key: "$sort", Value: bson.D{{Key: "total", Value: -1}}}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out []ExtractionModel
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []ExtractionModel{}
+	}
+	return out, nil
+}
+
+// ExtractionTotalsSince summarises receipts created since the given time.
+func (s *Service) ExtractionTotalsSince(ctx context.Context, since time.Time) (*ExtractionTotals, error) {
+	cur, err := col().Aggregate(ctx, mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"createdAt": bson.M{"$gte": since}}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":           nil,
+			"total":         bson.M{"$sum": 1},
+			"failed":        bson.M{"$sum": isFailed},
+			"processing":    bson.M{"$sum": isProcessing},
+			"avgConfidence": bson.M{"$avg": okConfidence},
+			"avgAttempts":   bson.M{"$avg": "$extracted.attempts"},
+		}}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var rows []ExtractionTotals
+	if err := cur.All(ctx, &rows); err != nil {
+		return nil, err
+	}
+	t := ExtractionTotals{}
+	if len(rows) > 0 {
+		t = rows[0]
+	}
+	t.Succeeded = t.Total - t.Failed - t.Processing
+	return &t, nil
+}
+
+// FailedRow is one failed extraction for the admin list.
+type FailedRow struct {
+	ID         bson.ObjectID `bson:"_id" json:"id"`
+	UserID     bson.ObjectID `bson:"userId" json:"userId"`
+	UserEmail  string        `bson:"-" json:"userEmail"`
+	Merchant   string        `bson:"merchant" json:"merchant"`
+	ImageCount int           `bson:"imageCount" json:"imageCount"`
+	Error      string        `bson:"error" json:"error"`
+	Model      string        `bson:"model" json:"model"`
+	Attempts   int           `bson:"attempts" json:"attempts"`
+	FailedAt   time.Time     `bson:"failedAt" json:"failedAt"`
+	CreatedAt  time.Time     `bson:"createdAt" json:"createdAt"`
+}
+
+// ListFailed pages receipts in the failed state, newest failure first.
+func (s *Service) ListFailed(ctx context.Context, page, pageSize int) ([]FailedRow, int64, error) {
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+	if page < 1 {
+		page = 1
+	}
+	filter := bson.M{"status": "failed"}
+	total, err := col().CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	cur, err := col().Aggregate(ctx, mongo.Pipeline{
+		{{Key: "$match", Value: filter}},
+		{{Key: "$sort", Value: bson.D{{Key: "updatedAt", Value: -1}}}},
+		{{Key: "$skip", Value: int64((page - 1) * pageSize)}},
+		{{Key: "$limit", Value: int64(pageSize)}},
+		{{Key: "$project", Value: bson.M{
+			"userId": 1, "merchant": 1, "createdAt": 1,
+			"imageCount": bson.M{"$size": "$images"},
+			"error":      "$extracted.error", "model": "$extracted.model", "attempts": "$extracted.attempts",
+			"failedAt": bson.M{"$ifNull": bson.A{"$extracted.extractedAt", "$updatedAt"}},
+		}}},
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	var rows []FailedRow
+	if err := cur.All(ctx, &rows); err != nil {
+		return nil, 0, err
+	}
+	if rows == nil {
+		rows = []FailedRow{}
+	}
+	return rows, total, nil
+}

@@ -20,9 +20,19 @@ type Config struct {
 	RefreshTokenTTL time.Duration
 
 	// UserAPIURL + ConfigReloadSecret let the admin ask the user backend to
-	// reload its dynamic config after system_config edits (optional).
+	// reload its dynamic config after system_config edits and to retry
+	// failed extractions (optional).
 	UserAPIURL         string
 	ConfigReloadSecret string
+
+	// AppURL is the user SPA origin (password-reset links handed out by admins).
+	AppURL string
+
+	// Storage must match the user backend so account deletion can remove
+	// receipt files: local | cloudinary.
+	StorageProvider string
+	LocalStorageDir string
+	CloudinaryURL   string
 }
 
 // AppConfig is the process-wide configuration.
@@ -55,6 +65,10 @@ func build(base *config.BaseConfig) *Config {
 		RefreshTokenTTL:    config.GetConfigDuration("ADMIN_REFRESH_TOKEN_TTL", 12*time.Hour),
 		UserAPIURL:         GetConfigVal("USER_API_URL", "http://localhost:8090"),
 		ConfigReloadSecret: GetConfigVal("CONFIG_RELOAD_SECRET", ""),
+		AppURL:             GetConfigVal("APP_URL", "http://localhost:5173"),
+		StorageProvider:    GetConfigVal("STORAGE_PROVIDER", "local"),
+		LocalStorageDir:    GetConfigVal("LOCAL_STORAGE_DIR", "../user/.data/uploads"),
+		CloudinaryURL:      GetConfigVal("CLOUDINARY_URL", ""),
 	}
 }
 

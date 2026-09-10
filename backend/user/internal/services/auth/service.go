@@ -11,15 +11,11 @@ import (
 	"smartreceipt/backend/common/pkg/mail"
 	"smartreceipt/backend/common/pkg/models"
 	commonauth "smartreceipt/backend/common/services/auth"
-	"smartreceipt/backend/common/services/category"
 	"smartreceipt/backend/common/services/user"
 
 	"smartreceipt/backend/user/internal/config"
 	"smartreceipt/backend/user/internal/pkg/middleware"
-	"smartreceipt/backend/user/internal/services/budget"
-	"smartreceipt/backend/user/internal/services/notification"
 	"smartreceipt/backend/user/internal/services/receipt"
-	"smartreceipt/backend/user/internal/services/warranty"
 )
 
 // CookiePath is where the refresh and OAuth-state cookies are scoped.
@@ -71,24 +67,16 @@ func (s *Service) ProviderNames() []string {
 }
 
 // DeleteAccount cascades an account deletion across domains, then removes
-// the user and their tokens.
+// the user and their tokens. The steps live in common/services/user so the
+// admin portal deletes accounts the same way.
 func (s *Service) DeleteAccount(ctx context.Context, uid bson.ObjectID) error {
-	if err := receipt.New().DeleteAllForUser(ctx, uid); err != nil {
-		return err
-	}
-	if err := category.New().DeleteAllForUser(ctx, uid); err != nil {
-		return err
-	}
-	if err := budget.New().DeleteAllForUser(ctx, uid); err != nil {
-		return err
-	}
-	if err := warranty.New().DeleteAllForUser(ctx, uid); err != nil {
-		return err
-	}
-	if err := notification.New().DeleteAllForUser(ctx, uid); err != nil {
-		return err
-	}
-	return s.Core().DeleteAccount(ctx, uid)
+	return user.DeleteCascade(ctx, uid, receipt.Store())
+}
+
+// EnsureActive is the bearer-token guard: it rejects users disabled or
+// deleted after their access token was issued (commonmw.SetAuthGuard).
+func (s *Service) EnsureActive(ctx context.Context, uid bson.ObjectID) error {
+	return s.Core().EnsureActive(ctx, uid)
 }
 
 // SecureCookies reports whether cookies must carry the Secure flag.

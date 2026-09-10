@@ -9,9 +9,11 @@ import (
 	"smartreceipt/backend/common/pkg/database"
 	gohttp "smartreceipt/backend/common/pkg/http"
 	"smartreceipt/backend/common/pkg/logger"
+	"smartreceipt/backend/common/pkg/storage"
 
 	appconfig "smartreceipt/backend/admin/internal/config"
 	"smartreceipt/backend/admin/internal/http/router"
+	"smartreceipt/backend/admin/internal/services/users"
 )
 
 // Run boots the service and blocks until shutdown.
@@ -50,6 +52,18 @@ func Run() {
 		logger.Warn(ctx, "missing indexes: run `make ensure-indexes`", "missing", missing)
 	}
 	cancelCheck()
+
+	// Storage provider: only used to delete a user's files on account deletion.
+	store, err := storage.New(storage.Config{
+		Provider: cfg.StorageProvider, LocalDir: cfg.LocalStorageDir,
+		LocalBaseURL: cfg.UserAPIURL + "/openapi/files", LocalSecret: cfg.JWTSecret,
+		CloudinaryURL: cfg.CloudinaryURL,
+	})
+	if err != nil {
+		logger.Fatal(ctx, "storage init failed", err)
+	}
+	users.Configure(store)
+	logger.Info(ctx, "providers", "storage", store.Name())
 
 	r := router.InitRouter()
 	cors := config.LoadCORS(config.CORSDefaults{

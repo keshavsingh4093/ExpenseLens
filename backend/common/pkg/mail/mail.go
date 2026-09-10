@@ -39,6 +39,14 @@ func New(cfg Config) Sender {
 	return &logSender{from: cfg.From}
 }
 
+// Discard returns a sender that drops every message (admin portal, which
+// hands links out of band instead of emailing).
+func Discard() Sender { return discardSender{} }
+
+type discardSender struct{}
+
+func (discardSender) Send(context.Context, Message) error { return nil }
+
 type logSender struct{ from string }
 
 func (l *logSender) Send(_ context.Context, m Message) error {

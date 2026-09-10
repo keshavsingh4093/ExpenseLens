@@ -80,6 +80,21 @@ func (s *Service) findOne(ctx context.Context, filter bson.M) (*models.User, err
 	return &u, nil
 }
 
+// IsDisabled reports the account flag with a projected lookup (auth guard).
+func (s *Service) IsDisabled(ctx context.Context, id bson.ObjectID) (bool, error) {
+	var row struct {
+		Disabled bool `bson:"disabled"`
+	}
+	err := col().FindOne(ctx, bson.M{"_id": id}, options.FindOne().SetProjection(bson.M{"disabled": 1})).Decode(&row)
+	if err != nil {
+		if database.IsNoDocuments(err) {
+			return false, ErrNotFound
+		}
+		return false, err
+	}
+	return row.Disabled, nil
+}
+
 // Update applies a $set patch and bumps updatedAt.
 func (s *Service) Update(ctx context.Context, id bson.ObjectID, set bson.M) error {
 	set["updatedAt"] = time.Now().UTC()
@@ -112,6 +127,7 @@ func (s *Service) Delete(ctx context.Context, id bson.ObjectID) error {
 // ListFilter drives List (admin portal).
 type ListFilter struct {
 	Query    string // matches email or name, case-insensitive
+	Status   string // "" | active | disabled
 	Page     int
 	PageSize int
 }
@@ -122,6 +138,12 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]models.User, int64,
 	if q := f.Query; q != "" {
 		re := bson.Regex{Pattern: regexp.QuoteMeta(q), Options: "i"}
 		filter["$or"] = bson.A{bson.M{"email": re}, bson.M{"name": re}}
+	}
+	switch f.Status {
+	case "disabled":
+		filter["disabled"] = true
+	case "active":
+		filter["disabled"] = bson.M{"$ne": true}
 	}
 	if f.PageSize <= 0 || f.PageSize > 100 {
 		f.PageSize = 20
@@ -158,6 +180,29 @@ func (s *Service) CountSince(ctx context.Context, t time.Time) (int64, error) {
 }
 
 var _ = mongo.ErrNoDocuments
+
+// EmailsByIDs returns id → email for the given users (admin joins).
+func (s *Service) EmailsByIDs(ctx context.Context, ids []bson.ObjectID) (map[bson.ObjectID]string, error) {
+	out := map[bson.ObjectID]string{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	cur, err := col().Find(ctx, bson.M{"_id": bson.M{"$in": ids}}, options.Find().SetProjection(bson.M{"email": 1}))
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		ID    bson.ObjectID `bson:"_id"`
+		Email string        `bson:"email"`
+	}
+	if err := cur.All(ctx, &rows); err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out[r.ID] = r.Email
+	}
+	return out, nil
+}
 
 // IDsWithWeeklySummary returns the ids of users who opted into the weekly
 // summary notification (scheduler).

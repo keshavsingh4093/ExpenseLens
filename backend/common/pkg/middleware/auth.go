@@ -21,7 +21,23 @@ const UserContextKey ContextKey = "claims"
 var (
 	jwtSecret     []byte
 	claimsFactory func() jwt.Claims
+	authGuard     AuthGuard
 )
+
+// AuthGuard runs after a bearer token parses and may reject the request
+// (e.g. the subject was disabled after the token was issued). Errors that
+// implement HTTPStatus()/ErrorCode() (gohttp.APIError) keep their status and
+// code; anything else is a 401.
+type AuthGuard func(ctx context.Context, claims jwt.Claims) error
+
+// SetAuthGuard installs the post-parse check used by EnsureAuth. Nil clears it.
+func SetAuthGuard(g AuthGuard) { authGuard = g }
+
+type statusError interface {
+	error
+	HTTPStatus() int
+	ErrorCode() string
+}
 
 // ConfigureAuth sets the signing secret and the claims factory used by
 // EnsureAuth. The factory returns a pointer to a fresh claims struct; if it
@@ -72,6 +88,17 @@ func EnsureAuth(next http.Handler) http.Handler {
 		if err != nil {
 			writeJSON(w, http.StatusUnauthorized, "invalid_token", "invalid or expired token")
 			return
+		}
+		if authGuard != nil {
+			if err := authGuard(r.Context(), claims); err != nil {
+				var se statusError
+				if errors.As(err, &se) {
+					writeJSON(w, se.HTTPStatus(), se.ErrorCode(), err.Error())
+				} else {
+					writeJSON(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+				}
+				return
+			}
 		}
 		next.ServeHTTP(w, r.WithContext(WithClaims(r.Context(), claims)))
 	})

@@ -8,6 +8,7 @@ import (
 	"smartreceipt/backend/user/internal/http/openapi/configreload"
 	"smartreceipt/backend/user/internal/http/openapi/files"
 	"smartreceipt/backend/user/internal/http/openapi/health"
+	"smartreceipt/backend/user/internal/http/openapi/receipts"
 	"smartreceipt/backend/user/internal/http/openapi/scheduler"
 )
 
@@ -19,5 +20,6 @@ func GetRouteSpecs() []gohttp.RouteSpec {
 	specs = append(specs, files.GetRouteSpecs()...)
 	specs = append(specs, configreload.GetRouteSpecs()...)
 	specs = append(specs, scheduler.GetRouteSpecs()...)
+	specs = append(specs, receipts.GetRouteSpecs()...)
 	return specs
 }

@@ -3,7 +3,9 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -64,4 +66,23 @@ func AdminID(ctx context.Context) bson.ObjectID {
 	}
 	id, _ := bson.ObjectIDFromHex(c.AdminID)
 	return id
+}
+
+// RoleSuperadmin can do everything, including destructive user actions.
+const RoleSuperadmin = "superadmin"
+
+// RequireRole is a RouteSpec extra that rejects admins without the role.
+func RequireRole(role string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, ok := GetAdminFromContext(r.Context())
+			if !ok || c.Role != role {
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				w.WriteHeader(http.StatusForbidden)
+				_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": "requires the " + role + " role", "code": "forbidden"})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

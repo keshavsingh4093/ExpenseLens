@@ -19,6 +19,7 @@ import (
 	svcpkg "smartreceipt/backend/common/services/systemconfig"
 
 	"smartreceipt/backend/admin/internal/config"
+	"smartreceipt/backend/admin/internal/services/audit"
 )
 
 var svc = svcpkg.New()
@@ -80,6 +81,9 @@ func handleUpsert(w http.ResponseWriter, r *http.Request) {
 	if c.Sensitive && c.Value != "" {
 		c.Value = svcpkg.Mask(c.Value)
 	}
+	// Values are never logged: a sensitive one is a secret and a plain one
+	// may still be, so the entry only records which key changed.
+	audit.Log(r, "system_config.upsert", audit.TargetSystemConfig, key, map[string]any{"sensitive": c.Sensitive})
 	go notifyUserBackend()
 	gohttp.Success(w, c)
 }
@@ -93,6 +97,7 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 		gohttp.WriteError(w, r, err)
 		return
 	}
+	audit.Log(r, "system_config.delete", audit.TargetSystemConfig, key, nil)
 	go notifyUserBackend()
 	gohttp.NoContent(w)
 }
@@ -104,6 +109,7 @@ func handleReload(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = config.Reload()
 	userReloaded := notifyUserBackend()
+	audit.Log(r, "system_config.reload", audit.TargetSystemConfig, "", map[string]any{"userBackendReloaded": userReloaded})
 	gohttp.Success(w, map[string]any{"status": "reloaded", "userBackendReloaded": userReloaded})
 }
 

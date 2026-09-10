@@ -250,8 +250,59 @@ func (s *Service) LoginWithIdentity(ctx context.Context, id Identity) (*models.U
 	return u, nil
 }
 
+// EnsureActive rejects requests from users that were disabled or deleted
+// after their access token was issued. Wired into the bearer middleware via
+// commonmw.SetAuthGuard so handlers never check this themselves.
+func (s *Service) EnsureActive(ctx context.Context, uid bson.ObjectID) error {
+	disabled, err := s.users.IsDisabled(ctx, uid)
+	if err != nil {
+		if errors.Is(err, user.ErrNotFound) {
+			return gohttp.ErrUnauthorized
+		}
+		return err
+	}
+	if disabled {
+		return ErrAccountDisabled
+	}
+	return nil
+}
+
+// SetDisabled flips the account flag; disabling also revokes every live
+// refresh token so the session ends at the next refresh (admin portal).
+func (s *Service) SetDisabled(ctx context.Context, uid bson.ObjectID, disabled bool) error {
+	if err := s.users.Update(ctx, uid, bson.M{"disabled": disabled}); err != nil {
+		if errors.Is(err, user.ErrNotFound) {
+			return gohttp.ErrNotFound
+		}
+		return err
+	}
+	if disabled {
+		return s.tokens.RevokeAll(ctx, models.TokenRefresh, uid)
+	}
+	return nil
+}
+
+// ResetLink issues a password-reset token for uid and returns the SPA URL
+// that consumes it (admin portal hands it to the user out of band; nothing
+// is emailed).
+func (s *Service) ResetLink(ctx context.Context, uid bson.ObjectID) (string, time.Time, error) {
+	if _, err := s.users.FindByID(ctx, uid); err != nil {
+		if errors.Is(err, user.ErrNotFound) {
+			return "", time.Time{}, gohttp.ErrNotFound
+		}
+		return "", time.Time{}, err
+	}
+	const ttl = time.Hour
+	raw, err := s.tokens.Issue(ctx, models.TokenReset, uid, ttl, "", "")
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return fmt.Sprintf("%s/reset-password?token=%s", s.cfg.AppURL, url.QueryEscape(raw)), time.Now().UTC().Add(ttl), nil
+}
+
 // DeleteAccount removes the user and revokes their tokens. Domain data is
-// cascaded by the caller before this.
+// cascaded by the caller before this (see user.DeleteCascade, which also
+// covers this step).
 func (s *Service) DeleteAccount(ctx context.Context, uid bson.ObjectID) error {
 	if err := s.tokens.RevokeAll(ctx, models.TokenRefresh, uid); err != nil {
 		return err

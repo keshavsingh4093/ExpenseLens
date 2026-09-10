@@ -41,6 +41,10 @@ var deps Deps
 // Configure installs the providers. Call once from app.Run before serving.
 func Configure(d Deps) { deps = d }
 
+// Store exposes the configured storage provider to sibling services
+// (account cascade, warranty images).
+func Store() storage.Provider { return deps.Store }
+
 // Shutdown stops the worker pool, waiting up to ctx for in-flight jobs.
 func Shutdown(ctx context.Context) {
 	if deps.Pool != nil {
@@ -332,6 +336,16 @@ func (s *Service) Reextract(ctx context.Context, uid, id bson.ObjectID) (*models
 	deps.Pool.Submit(func(ctx context.Context) { s.runExtraction(ctx, uid, id, files) })
 	rc.Status = models.ReceiptProcessing
 	return s.Decorate(rc), nil
+}
+
+// ReextractByID re-runs extraction for any user's receipt (ops route used
+// by the admin portal's retry). The owner is resolved from the document.
+func (s *Service) ReextractByID(ctx context.Context, id bson.ObjectID) (*models.Receipt, error) {
+	rc, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return s.Reextract(ctx, rc.UserID, id)
 }
 
 func (s *Service) loadFiles(ctx context.Context, rc *models.Receipt) ([]extraction.File, error) {
