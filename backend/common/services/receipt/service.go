@@ -294,3 +294,47 @@ func (s *Service) CountUsersWithReceipts(ctx context.Context) (int64, error) {
 	}
 	return int64(len(vals)), nil
 }
+
+// FindAll returns every counted receipt (review/confirmed) for the user in
+// the inclusive date window, oldest first, capped at 5000 rows (exports).
+func (s *Service) FindAll(ctx context.Context, uid bson.ObjectID, from, to string) ([]models.Receipt, error) {
+	filter := bson.M{"userId": uid, "status": bson.M{"$in": bson.A{"review", "confirmed"}}}
+	if from != "" || to != "" {
+		d := bson.M{}
+		if from != "" {
+			d["$gte"] = from
+		}
+		if to != "" {
+			d["$lte"] = to
+		}
+		filter["date"] = d
+	}
+	cur, err := col().Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "date", Value: 1}, {Key: "createdAt", Value: 1}}).SetLimit(5000))
+	if err != nil {
+		return nil, err
+	}
+	var out []models.Receipt
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []models.Receipt{}
+	}
+	return out, nil
+}
+
+// ListAllForUser returns every receipt of the user regardless of status (exports).
+func (s *Service) ListAllForUser(ctx context.Context, uid bson.ObjectID) ([]models.Receipt, error) {
+	cur, err := col().Find(ctx, bson.M{"userId": uid}, options.Find().SetSort(bson.D{{Key: "createdAt", Value: 1}}).SetLimit(5000))
+	if err != nil {
+		return nil, err
+	}
+	var out []models.Receipt
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []models.Receipt{}
+	}
+	return out, nil
+}
