@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
-import { Wallet, CalendarDays, Sun, Gauge, Upload, Receipt as ReceiptIcon, PiggyBank } from 'lucide-react'
+import { Wallet, CalendarDays, Sun, Gauge, Upload, Receipt as ReceiptIcon } from 'lucide-react'
 import { Button } from '@common/ui/Button'
 import { Skeleton } from '@common/ui/Skeleton'
 import { EmptyState } from '@common/ui/EmptyState'
@@ -18,6 +18,7 @@ import { receiptsApi, receiptKeys } from '@/features/receipts/api'
 import { useAuth } from '@/features/auth/useAuth'
 import { formatMoney } from '@common/format/money'
 import { formatDate } from '@common/format/date'
+import { BudgetOverview } from '@/features/budgets/BudgetOverview'
 
 const trendRanges: [RangeName, string][] = [['30d', 'Last 30 days'], ['3m', 'Last 3 months'], ['6m', 'Last 6 months'], ['year', 'This Year']]
 
@@ -121,7 +122,7 @@ export function DashboardPage() {
             <h2 className="text-sm font-semibold">Budget Overview</h2>
             <Link to="/budgets" className="text-xs font-medium text-brand-700 hover:underline">View All</Link>
           </div>
-          <EmptyState icon={PiggyBank} title="No budgets yet" description="Set monthly limits per category to track progress here." action={<Link to="/budgets"><Button size="sm" variant="secondary">Set up budgets</Button></Link>} />
+          <BudgetOverview />
         </section>
       </div>
     </div>

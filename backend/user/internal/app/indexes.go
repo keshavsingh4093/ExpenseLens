@@ -8,9 +8,12 @@ import (
 	"smartreceipt/backend/common/pkg/database"
 	"smartreceipt/backend/common/pkg/logger"
 	"smartreceipt/backend/common/services/auth"
+	"smartreceipt/backend/common/services/budget"
 	"smartreceipt/backend/common/services/category"
+	"smartreceipt/backend/common/services/notification"
 	"smartreceipt/backend/common/services/receipt"
 	"smartreceipt/backend/common/services/user"
+	"smartreceipt/backend/common/services/warranty"
 
 	appconfig "smartreceipt/backend/user/internal/config"
 )
@@ -20,6 +23,7 @@ import (
 func AllIndexSets() []database.IndexSet {
 	return []database.IndexSet{
 		user.Indexes(), auth.TokenIndexes(), category.Indexes(), receipt.Indexes(), config.SystemConfigIndexes(),
+		budget.Indexes(), warranty.Indexes(), notification.Indexes(),
 	}
 }
 
@@ -41,6 +45,9 @@ func EnsureAllIndexes(ctx context.Context) error {
 	step("category.EnsureIndexes", category.EnsureIndexes)
 	step("category.Seed", category.Seed)
 	step("receipt.EnsureIndexes", receipt.EnsureIndexes)
+	step("budget.EnsureIndexes", budget.EnsureIndexes)
+	step("warranty.EnsureIndexes", warranty.EnsureIndexes)
+	step("notification.EnsureIndexes", notification.EnsureIndexes)
 	step("systemconfig.EnsureIndexes", func(ctx context.Context) error {
 		return database.EnsureIndexes(ctx, config.SystemConfigIndexes())
 	})

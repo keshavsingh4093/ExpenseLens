@@ -1,6 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router'
 import { AppShell } from './AppShell'
-import { Placeholder } from '@common/ui/Placeholder'
 import { RequireAuth, GuestOnly } from '@common/auth/RequireAuth'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
@@ -19,6 +18,13 @@ import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { ReviewPage } from '@/features/receipts/ReviewPage'
 import { ReceiptsPage } from '@/features/receipts/ReceiptsPage'
 import { ReceiptDetailPage } from '@/features/receipts/ReceiptDetailPage'
+import { AnalyticsPage } from '@/features/analytics/AnalyticsPage'
+import { BudgetsPage } from '@/features/budgets/BudgetsPage'
+import { CategoriesPage } from '@/features/categories/CategoriesPage'
+import { WarrantyPage } from '@/features/warranty/WarrantyPage'
+import { ReportsPage } from '@/features/reports/ReportsPage'
+import { NotificationsPage } from '@/features/notifications/NotificationsPage'
+import { MorePage } from '@/features/more/MorePage'
 
 export const router = createBrowserRouter([
   {
@@ -33,13 +39,13 @@ export const router = createBrowserRouter([
           { path: 'receipts/:id', element: <ReceiptDetailPage /> },
           { path: 'receipts/:id/review', element: <ReviewPage /> },
           { path: 'upload', element: <UploadPage /> },
-          { path: 'analytics', element: <Placeholder title="Analytics" /> },
-          { path: 'budgets', element: <Placeholder title="Budgets" /> },
-          { path: 'categories', element: <Placeholder title="Categories" /> },
-          { path: 'warranty', element: <Placeholder title="Warranty" /> },
-          { path: 'reports', element: <Placeholder title="Reports" /> },
-          { path: 'notifications', element: <Placeholder title="Notifications" /> },
-          { path: 'more', element: <Placeholder title="More" /> },
+          { path: 'analytics', element: <AnalyticsPage /> },
+          { path: 'budgets', element: <BudgetsPage /> },
+          { path: 'categories', element: <CategoriesPage /> },
+          { path: 'warranty', element: <WarrantyPage /> },
+          { path: 'reports', element: <ReportsPage /> },
+          { path: 'notifications', element: <NotificationsPage /> },
+          { path: 'more', element: <MorePage /> },
           {
             path: 'settings',
             element: <SettingsLayout />,

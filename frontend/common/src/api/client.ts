@@ -101,3 +101,38 @@ export async function api<T>(path: string, opts: Opts = {}): Promise<T> {
   }
   return json.data as T
 }
+
+/**
+ * Downloads an authenticated attachment (CSV/PDF/JSON) and hands it to the
+ * browser as a file. One silent refresh + retry on 401, like `api`.
+ */
+export async function downloadFile(path: string, fallbackName: string, retry = true): Promise<void> {
+  const res = await fetch(path, {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  })
+  if (res.status === 401 && retry && path.startsWith('/api/') && (await refresh())) {
+    return downloadFile(path, fallbackName, false)
+  }
+  if (!res.ok) {
+    let json: Envelope<unknown> | null = null
+    try {
+      json = (await res.json()) as Envelope<unknown>
+    } catch {
+      json = null
+    }
+    throw new ApiRequestError({ status: res.status, code: json?.code ?? 'unknown', message: json?.error ?? 'Download failed', fields: json?.fields })
+  }
+  const cd = res.headers.get('Content-Disposition') ?? ''
+  const m = /filename="?([^";]+)"?/.exec(cd)
+  const name = m?.[1] ?? fallbackName
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}

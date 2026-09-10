@@ -3,6 +3,7 @@ import { Plus, ScanLine, LogOut } from 'lucide-react'
 import { useAuth } from '@/features/auth/useAuth'
 import { clsx } from 'clsx'
 import { sidebarNav, bottomNav } from './nav'
+import { useUnreadCount } from '@/features/notifications/useUnreadCount'
 
 export function AppShell() {
   return (
@@ -16,7 +17,13 @@ export function AppShell() {
   )
 }
 
+function Badge({ count, className }: { count: number; className?: string }) {
+  if (count <= 0) return null
+  return <span className={clsx('rounded-full bg-brand-600 px-1.5 text-[10px] font-semibold leading-4 text-white', className)} aria-label={`${count} unread`}>{count > 99 ? '99+' : count}</span>
+}
+
 function Sidebar() {
+  const unread = useUnreadCount()
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] px-4 py-5 md:flex">
       <Link to="/" className="mb-6 flex items-center gap-2 px-2">
@@ -40,8 +47,13 @@ function Sidebar() {
               )
             }
           >
-            <Icon className="size-4.5" />
-            {label}
+            {({ isActive }) => (
+              <>
+                <Icon className="size-4.5" />
+                <span className="flex-1">{label}</span>
+                {to === '/notifications' && <Badge count={unread} className={isActive ? 'bg-white text-brand-700' : ''} />}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -80,7 +92,7 @@ function UserBlock() {
 
 type BottomItem = (typeof bottomNav)[number]
 
-function Tab({ item }: { item: BottomItem }) {
+function Tab({ item, badge }: { item: BottomItem; badge?: number }) {
   return (
     <NavLink
       to={item.to}
@@ -92,7 +104,10 @@ function Tab({ item }: { item: BottomItem }) {
         )
       }
     >
-      <item.icon className="size-5" />
+      <span className="relative">
+        <item.icon className="size-5" />
+        {!!badge && <Badge count={badge} className="absolute -top-1.5 -right-2.5" />}
+      </span>
       {item.label}
     </NavLink>
   )
@@ -100,6 +115,7 @@ function Tab({ item }: { item: BottomItem }) {
 
 function BottomTabs() {
   const [a, b, c, d] = bottomNav
+  const unread = useUnreadCount()
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 flex items-end border-t border-[var(--border)] bg-[var(--surface)] pb-[env(safe-area-inset-bottom)] md:hidden">
       <Tab item={a} />
@@ -112,7 +128,7 @@ function BottomTabs() {
         <Plus className="size-6" />
       </Link>
       <Tab item={c} />
-      <Tab item={d} />
+      <Tab item={d} badge={unread} />
     </nav>
   )
 }

@@ -16,7 +16,10 @@ import (
 
 	"smartreceipt/backend/user/internal/config"
 	"smartreceipt/backend/user/internal/pkg/middleware"
+	"smartreceipt/backend/user/internal/services/budget"
+	"smartreceipt/backend/user/internal/services/notification"
 	"smartreceipt/backend/user/internal/services/receipt"
+	"smartreceipt/backend/user/internal/services/warranty"
 )
 
 // CookiePath is where the refresh and OAuth-state cookies are scoped.
@@ -74,6 +77,15 @@ func (s *Service) DeleteAccount(ctx context.Context, uid bson.ObjectID) error {
 		return err
 	}
 	if err := category.New().DeleteAllForUser(ctx, uid); err != nil {
+		return err
+	}
+	if err := budget.New().DeleteAllForUser(ctx, uid); err != nil {
+		return err
+	}
+	if err := warranty.New().DeleteAllForUser(ctx, uid); err != nil {
+		return err
+	}
+	if err := notification.New().DeleteAllForUser(ctx, uid); err != nil {
 		return err
 	}
 	return s.Core().DeleteAccount(ctx, uid)

@@ -22,6 +22,6 @@ export const analyticsKeys = {
   summary: ['analytics', 'summary'] as const,
   trend: (r: RangeParams) => ['analytics', 'trend', r] as const,
   categories: (r: RangeParams) => ['analytics', 'categories', r] as const,
-  merchants: (r: RangeParams) => ['analytics', 'merchants', r] as const,
+  merchants: (r: RangeParams & { limit?: number }) => ['analytics', 'merchants', r] as const,
   stats: (r: RangeParams) => ['analytics', 'stats', r] as const,
 }

@@ -158,3 +158,24 @@ func (s *Service) CountSince(ctx context.Context, t time.Time) (int64, error) {
 }
 
 var _ = mongo.ErrNoDocuments
+
+// IDsWithWeeklySummary returns the ids of users who opted into the weekly
+// summary notification (scheduler).
+func (s *Service) IDsWithWeeklySummary(ctx context.Context) ([]bson.ObjectID, error) {
+	cur, err := col().Find(ctx, bson.M{"preferences.notifications.weeklySummary": true, "disabled": bson.M{"$ne": true}},
+		options.Find().SetProjection(bson.M{"_id": 1}))
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		ID bson.ObjectID `bson:"_id"`
+	}
+	if err := cur.All(ctx, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]bson.ObjectID, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r.ID)
+	}
+	return out, nil
+}

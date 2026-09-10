@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
+import { Download } from 'lucide-react'
 import { Button } from '@common/ui/Button'
 import { Alert } from '@common/ui/Alert'
 import { useAuth } from '@/features/auth/useAuth'
 import { meApi } from '@/features/auth/api'
+import { reportsApi } from '@/features/reports/api'
 import { SettingsSection } from './SettingsLayout'
 
 export function DataPrivacyPage() {
@@ -11,6 +13,11 @@ export function DataPrivacyPage() {
   const nav = useNavigate()
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const exportAll = async () => {
+    setExporting(true)
+    try { await reportsApi.exportAll() } finally { setExporting(false) }
+  }
   const del = async () => {
     setBusy(true)
     try {
@@ -24,7 +31,8 @@ export function DataPrivacyPage() {
   return (
     <div className="grid gap-8">
       <SettingsSection title="Your data">
-        <p className="text-muted text-sm">Receipts, images, budgets and warranties are stored only for your account. Export everything from the Export Data tab.</p>
+        <p className="text-muted text-sm">Receipts, images, budgets and warranties are stored only for your account. You can download everything as a single JSON file at any time.</p>
+        <div className="mt-3"><Button variant="secondary" onClick={exportAll} loading={exporting}><Download className="size-4" /> Export all data</Button></div>
       </SettingsSection>
       <SettingsSection title="Delete account">
         <Alert>This permanently deletes your account and all receipts. This cannot be undone.</Alert>

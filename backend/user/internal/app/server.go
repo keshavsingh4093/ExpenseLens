@@ -18,6 +18,8 @@ import (
 	"smartreceipt/backend/user/internal/http/router"
 	authsvc "smartreceipt/backend/user/internal/services/auth"
 	"smartreceipt/backend/user/internal/services/receipt"
+	"smartreceipt/backend/user/internal/services/scheduler"
+	"smartreceipt/backend/user/internal/services/warranty"
 )
 
 // Run boots the service and blocks until shutdown.
@@ -76,7 +78,10 @@ func Run() {
 
 	receipt.Configure(receipt.Deps{Store: store, Extractor: extractor, Pool: pool, MaxUploadMB: cfg.MaxUploadMB})
 	files.Configure(store)
+	warranty.Configure(store)
+	receipt.SetHooks(domainHooks())
 	authsvc.InitProviders(ctx)
+	scheduler.Start()
 
 	r := router.InitRouter()
 
@@ -90,7 +95,7 @@ func Run() {
 	})
 
 	srv := gohttp.NewServer(gohttp.ServerConfig{Port: cfg.Port, CORS: cors}, r)
-	srv.OnShutdown = append(srv.OnShutdown, receipt.Shutdown)
+	srv.OnShutdown = append(srv.OnShutdown, scheduler.Stop, receipt.Shutdown)
 	logger.Info(ctx, "user api starting", "port", cfg.Port, "env", cfg.Env)
 	if err := srv.Run(); err != nil {
 		logger.Fatal(ctx, "server error", err)

@@ -2,8 +2,10 @@
 package user
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
@@ -11,13 +13,18 @@ import (
 	"smartreceipt/backend/common/pkg/validate"
 	usersvc "smartreceipt/backend/common/services/user"
 
+	"smartreceipt/backend/user/internal/http/api/reports"
 	"smartreceipt/backend/user/internal/pkg/middleware"
 	authsvc "smartreceipt/backend/user/internal/services/auth"
+	"smartreceipt/backend/user/internal/services/receipt"
+	"smartreceipt/backend/user/internal/services/report"
 )
 
 var (
-	users = usersvc.New()
-	auth  = authsvc.New()
+	users    = usersvc.New()
+	auth     = authsvc.New()
+	exporter = report.New()
+	receipts = receipt.New()
 )
 
 // GetRouteSpecs returns the /api/me routes.
@@ -28,7 +35,23 @@ func GetRouteSpecs() []gohttp.RouteSpec {
 		{Method: "PATCH", Path: "/api/me/preferences", Handler: handlePatchPreferences},
 		{Method: "POST", Path: "/api/me/password", Handler: handleChangePassword},
 		{Method: "DELETE", Path: "/api/me", Handler: handleDelete},
+		{Method: "GET", Path: "/api/me/export", Handler: handleExport, TimeOut: 120},
 	}
+}
+
+// handleExport downloads everything the user owns as JSON.
+func handleExport(w http.ResponseWriter, r *http.Request) {
+	out, err := exporter.AllData(r.Context(), middleware.UserID(r.Context()), receipts.Decorate)
+	if err != nil {
+		gohttp.WriteError(w, r, err)
+		return
+	}
+	body, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		gohttp.WriteError(w, r, err)
+		return
+	}
+	reports.Attachment(w, "expenselens-export-"+time.Now().UTC().Format("2006-01-02")+".json", "application/json", body)
 }
 
 func handleGet(w http.ResponseWriter, r *http.Request) {

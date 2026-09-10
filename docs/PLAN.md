@@ -52,7 +52,8 @@ backend/
   user/     module smartreceipt/backend/user (replace ../common)   API :8090
     cmd/server, cmd/scripts/ensure-indexes
     internal/{app,config,http/{router,openapi/*,api/*},pkg/middleware,services/{auth,receipt,analytics}}
-    (Phase 3 adds internal/services/{budget,warranty,notification,report} + internal/http/api/*)
+    internal/services/{budget,warranty,notification,report,scheduler} + internal/http/api/{budgets,
+    warranties,notifications,reports} + internal/http/openapi/scheduler (Phase 3)
   admin/    module smartreceipt/backend/admin (replace ../common)  API :8091
     cmd/server, cmd/scripts/{ensure-indexes,create-admin}
     internal/{app,config,http/{router,openapi/*,api/*},pkg/middleware,services/{adminauth,stats}}
@@ -138,17 +139,22 @@ Receipts: `POST /receipts/upload` (multipart, 1..n files or pdf) → `{receiptId
 
 Categories: `GET /categories`, `POST /categories`, `PATCH /categories/{id}`, `DELETE /categories/{id}`.
 
-Budgets: `GET /budgets?month`, `PUT /budgets` (upsert), `DELETE /budgets/{id}`.
+Budgets: `GET /budgets?month&tz` → `{month, budgets:[{…budget, spent, remaining, percent, count}], summary}`,
+`PUT /budgets {categoryId, month, limit}` (upsert), `DELETE /budgets/{id}`.
 
-Warranties: `GET /warranties?status`, `POST`, `PATCH /{id}`, `DELETE /{id}`.
+Warranties: `GET /warranties?status` → `{warranties, counts}`, `POST`, `GET|PATCH|DELETE /{id}`.
+Expiry = purchaseDate + durationMonths when `expiryDate` is absent; status/daysLeft derived per request.
 
 Analytics: `GET /analytics/summary` (KPI tiles with deltas), `GET /analytics/trend?range&granularity`,
 `GET /analytics/categories?range`, `GET /analytics/merchants?range&limit`,
 `GET /analytics/stats?range` (avg daily, highest day, tx count).
 
-Notifications: `GET /notifications`, `POST /notifications/{id}/read`, `POST /notifications/read-all`.
+Notifications: `GET /notifications?page&pageSize` → `{notifications,total,unread,page,pageSize}`,
+`GET /notifications/unread-count`, `POST /notifications/{id}/read`, `POST /notifications/read-all`.
 
-Reports: `GET /reports/export?format=csv|pdf&from&to`.
+Reports: `GET /reports/export?format=csv|pdf&range|from&to&tz` (attachment). All-data JSON:
+`GET /api/me/export`. Ops: `POST /openapi/scheduler/run` (header `X-Config-Reload-Secret`) forces the
+daily scheduler job.
 
 ## 5. Extraction contract (Gemini)
 
@@ -223,17 +229,18 @@ repository (no local `replace` to sibling repos, no copied files; registry packa
 - [x] Root Makefile + npm workspaces; `.env.example` per service
 - [x] Unit tests ported; API smoke (76 checks) + Playwright flows green (user); admin smoke (27 checks) + admin Playwright; commit
 
-### Phase 3 — Insights and tracking
-- [ ] Budgets: API + Budgets screen (month nav, progress bars, add/edit)
-- [ ] Analytics screen: range tabs, trend, top merchants, category breakdown, stats row
-- [ ] Warranty: API + screen (Active / Expiring soon / Expired tabs, add form, link to receipt item)
-- [ ] Notifications: API + screen + unread badge; budget 80%/100% alerts; warranty 30/7-day reminders
-      (scheduler goroutine, daily)
-- [ ] Reports: CSV export; monthly PDF summary
-- [ ] Settings: Notifications, Data & Privacy (export all data, delete account), Help, About
-      (pages exist since Phase 1; Export needs Reports)
-- [ ] Categories screen (list system + custom, add/edit/delete custom with icon + color)
-- [ ] Mobile "More" screen (links to Budgets, Categories, Warranty, Reports, Notifications, Settings)
+### Phase 3 — Insights and tracking (landed 2026-09-10)
+- [x] Budgets: API + Budgets screen (month nav, progress bars, add/edit)
+- [x] Analytics screen: range tabs, trend, top merchants, category breakdown, stats row
+- [x] Warranty: API + screen (Active / Expiring soon / Expired tabs, add form, link to receipt item)
+- [x] Notifications: API + screen + unread badge; budget 80%/100% alerts; warranty 30/7-day reminders
+      (scheduler goroutine, hourly tick, daily job once per UTC day; `POST /openapi/scheduler/run`
+      forces it with the `CONFIG_RELOAD_SECRET` header)
+- [x] Reports: CSV export; monthly PDF summary (`github.com/go-pdf/fpdf`)
+- [x] Settings: Notifications, Data & Privacy (export all data, delete account), Help, About
+      (Export tab links to Reports + "Export all data" JSON via `GET /api/me/export`)
+- [x] Categories screen (list system + custom, add/edit/delete custom with icon + color)
+- [x] Mobile "More" screen (links to Budgets, Categories, Warranty, Reports, Notifications, Settings)
 
 Chart colors: the 8 system categories use the validated dataviz palette (see
 `frontend/common/src/categories/colors.ts`, light + dark steps); "others" and custom categories

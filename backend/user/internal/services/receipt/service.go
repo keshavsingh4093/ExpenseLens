@@ -68,13 +68,25 @@ type UploadResult struct {
 	FileName  string               `json:"fileName"`
 }
 
+// Hooks are domain callbacks wired at boot (notifications, budget alerts).
+// Both are optional and run synchronously with a short timeout.
+type Hooks struct {
+	// OnExtracted runs after an extraction attempt finishes (review or failed).
+	OnExtracted func(ctx context.Context, rc *models.Receipt)
+	// OnConfirmed runs after a receipt is confirmed.
+	OnConfirmed func(ctx context.Context, rc *models.Receipt)
+}
+
+var hooks Hooks
+
+// SetHooks installs the domain callbacks. Call once from app.Run.
+func SetHooks(h Hooks) { hooks = h }
+
 // Service orchestrates storage, extraction, and persistence.
 type Service struct {
 	repo  *receiptrepo.Service
 	cats  *category.Service
 	users *user.Service
-	// OnExtracted is called after an extraction attempt finishes (notifications hook).
-	OnExtracted func(ctx context.Context, rc *models.Receipt)
 }
 
 // New returns the service bound to the configured providers.
@@ -291,13 +303,13 @@ func (s *Service) runExtraction(ctx context.Context, uid, id bson.ObjectID, file
 }
 
 func (s *Service) notify(uid, id bson.ObjectID) {
-	if s.OnExtracted == nil {
+	if hooks.OnExtracted == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if rc, err := s.repo.Get(ctx, uid, id); err == nil {
-		s.OnExtracted(ctx, rc)
+		hooks.OnExtracted(ctx, rc)
 	}
 }
 
@@ -477,7 +489,11 @@ func (s *Service) Confirm(ctx context.Context, uid, id bson.ObjectID, p Patch) (
 	if err := s.repo.Update(ctx, uid, id, set); err != nil {
 		return nil, mapErr(err)
 	}
-	return s.Get(ctx, uid, id)
+	out, err := s.Get(ctx, uid, id)
+	if err == nil && hooks.OnConfirmed != nil {
+		hooks.OnConfirmed(ctx, out)
+	}
+	return out, err
 }
 
 // Get loads and decorates.
