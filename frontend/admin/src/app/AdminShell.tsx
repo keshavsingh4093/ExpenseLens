@@ -1,5 +1,5 @@
 import { NavLink, Outlet, Link, useNavigate } from 'react-router'
-import { LayoutDashboard, Users, SlidersHorizontal, LogOut, ShieldCheck, Moon, Sun, type LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Users, SlidersHorizontal, LogOut, ShieldCheck, Moon, Sun, ScanText, Tags, ScrollText, type LucideIcon } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/features/auth/useAuth'
 import { useTheme } from '@common/theme/useTheme'
@@ -7,7 +7,10 @@ import { useTheme } from '@common/theme/useTheme'
 const nav: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/users', label: 'Users', icon: Users },
+  { to: '/extraction', label: 'Extraction', icon: ScanText },
+  { to: '/categories', label: 'Categories', icon: Tags },
   { to: '/system-config', label: 'System Config', icon: SlidersHorizontal },
+  { to: '/audit', label: 'Audit log', icon: ScrollText },
 ]
 
 export function AdminShell() {

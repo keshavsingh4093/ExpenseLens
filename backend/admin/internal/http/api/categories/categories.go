@@ -3,6 +3,7 @@ package categories
 
 import (
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -109,12 +110,13 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 		gohttp.BadRequest(w, "nothing to update")
 		return
 	}
+	changed := keys(set) // before Update, which adds updatedAt to set
 	c, err := svc.Update(r.Context(), id, set)
 	if err != nil {
 		gohttp.WriteError(w, r, err)
 		return
 	}
-	audit.Log(r, "category.update", audit.TargetCategory, id.Hex(), map[string]any{"name": c.Name, "slug": c.Slug, "changed": keys(set)})
+	audit.Log(r, "category.update", audit.TargetCategory, id.Hex(), map[string]any{"name": c.Name, "slug": c.Slug, "changed": changed})
 	gohttp.Success(w, c)
 }
 
@@ -138,5 +140,6 @@ func keys(m bson.M) []string {
 	for k := range m {
 		out = append(out, k)
 	}
+	sort.Strings(out)
 	return out
 }

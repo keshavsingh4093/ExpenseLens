@@ -1,3 +1,17 @@
 @import 'tailwindcss';
 @import '../../common/tailwind.preset.css';
 @source '../../common/src';
+
+/* Chart tokens (validated with the dataviz palette checker against --surface):
+   succeeded = categorical slot 1, failed = status critical (always paired
+   with an icon + label). */
+@layer base {
+  :root {
+    --viz-ok: #2a78d6;
+    --viz-failed: #d03b3b;
+  }
+  .dark {
+    --viz-ok: #3987e5;
+    --viz-failed: #d03b3b;
+  }
+}

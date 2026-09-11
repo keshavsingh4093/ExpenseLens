@@ -13,9 +13,11 @@ export type PortalUser = {
   createdAt: string
 }
 
+export type UserStatusFilter = '' | 'active' | 'disabled'
+export type UsersParams = { q?: string; status?: UserStatusFilter; page?: number; pageSize?: number }
 export type UsersPage = { users: PortalUser[]; total: number; page: number; pageSize: number }
 
-function qs(params: Record<string, unknown>) {
+export function qs(params: Record<string, unknown>) {
   const p = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '' && v !== null) p.set(k, String(v))
   const s = p.toString()
@@ -23,11 +25,16 @@ function qs(params: Record<string, unknown>) {
 }
 
 export const usersApi = {
-  list: (params: { q?: string; page?: number; pageSize?: number }) => api<UsersPage>(`/api/admin/users${qs(params)}`),
+  list: (params: UsersParams) => api<UsersPage>(`/api/admin/users${qs(params)}`),
   get: (id: string) => api<{ user: PortalUser; receiptCount: number }>(`/api/admin/users/${id}`),
+  disable: (id: string) => api<{ user: PortalUser }>(`/api/admin/users/${id}/disable`, { method: 'POST' }),
+  enable: (id: string) => api<{ user: PortalUser }>(`/api/admin/users/${id}/enable`, { method: 'POST' }),
+  resetLink: (id: string) => api<{ link: string; expiresAt: string }>(`/api/admin/users/${id}/reset-password-link`, { method: 'POST' }),
+  remove: (id: string) => api<void>(`/api/admin/users/${id}`, { method: 'DELETE' }),
 }
 
 export const userKeys = {
-  list: (params: { q?: string; page?: number; pageSize?: number }) => ['admin', 'users', params] as const,
+  all: ['admin', 'users'] as const,
+  list: (params: UsersParams) => ['admin', 'users', params] as const,
   detail: (id: string) => ['admin', 'users', 'detail', id] as const,
 }

@@ -48,7 +48,8 @@ browser ──HTTPS──> Go API (chi) ──> MongoDB
 backend/
   common/   module smartreceipt/backend/common
     pkg/{http,middleware,database,logger,config,validate,models,storage,extraction,mail}
-    services/{auth,user,category,receipt,systemconfig,adminuser}   collection access + shared logic
+    services/{auth,user,category,receipt,systemconfig,adminuser,adminaudit,…}   collection access + shared logic
+    services/user/cascade.go   DeleteCascade: the one account-deletion path for both portals (Phase 5)
   user/     module smartreceipt/backend/user (replace ../common)   API :8090
     cmd/server, cmd/scripts/ensure-indexes
     internal/{app,config,http/{router,openapi/*,api/*},pkg/middleware,services/{auth,receipt,analytics}}
@@ -57,6 +58,8 @@ backend/
   admin/    module smartreceipt/backend/admin (replace ../common)  API :8091
     cmd/server, cmd/scripts/{ensure-indexes,create-admin}
     internal/{app,config,http/{router,openapi/*,api/*},pkg/middleware,services/{adminauth,stats}}
+    internal/services/{users,extraction,categories,audit} + internal/http/api/{users,extraction,
+    categories,audit} (Phase 5)
 ```
 Indexes are never built on the boot path: `make ensure-indexes` (per service) builds them and seeds
 the system categories; `app.Run()` only warns about missing ones.
@@ -70,7 +73,7 @@ frontend/
     theme/ ui/ charts/ format/ hooks/ categories/ analytics/types
   common/tailwind.preset.css   shared @theme tokens, dark variant, card/text-muted utilities
   user/src/       app/ (shell, router), features/{auth,dashboard,upload,receipts,categories,settings,…}
-  admin/src/      app/ (AdminShell, router), features/{auth,dashboard,users,config}
+  admin/src/      app/ (AdminShell, router), features/{auth,dashboard,users,config,extraction,categories,audit}
 ```
 
 ## 3. Data model (MongoDB)
@@ -81,7 +84,8 @@ indexed `{userId: 1, ...}`.
 **users**
 `email` (unique, lowercased), `emailVerified`, `passwordHash?`, `name`, `avatarUrl?`,
 `providers: [{provider, providerUserId, linkedAt}]`,
-`preferences: {currency, language, theme, timezone, notifications: {budgetAlerts, warrantyReminders, weeklySummary}}`
+`preferences: {currency, language, theme, timezone, notifications: {budgetAlerts, warrantyReminders, weeklySummary}}`,
+`disabled?` (admin-set; login, refresh and every `/api` call reject the user via the bearer-token guard)
 
 **refresh_tokens**
 `userId`, `tokenHash`, `expiresAt`, `revokedAt?`, `replacedBy?`, `userAgent`, `ip`. TTL index on `expiresAt`.
@@ -113,6 +117,12 @@ Shopping, Medical, Entertainment, Travel, Utilities, Groceries, Others.
 `userId`, `type: budget_alert|warranty_expiring|extraction_done|extraction_failed|weekly_summary`,
 `title`, `body`, `data`, `readAt?`.
 
+**admin_audit_log** (Phase 5)
+`adminId`, `adminEmail`, `action` (e.g. `user.disable`, `category.delete`, `system_config.upsert`),
+`targetType: user|receipt|category|system_config`, `targetId`, `details` (never secrets: no reset
+links, no config values), `ip`, `at`. Indexes `{at:-1}`, `{targetId,at:-1}`, `{adminId,at:-1}`,
+`{action,at:-1}`. Written after every successful mutating admin route.
+
 ## 4. API surface
 
 Unauthenticated routes live under `/openapi`, authenticated ones under `/api`. Responses use
@@ -131,6 +141,19 @@ Admin API (`:8091`): `POST /openapi/admin/login`, `POST /openapi/admin/auth/{ref
 `GET /api/admin/me`, `GET /api/admin/users?q&page&pageSize`, `GET /api/admin/users/{id}`,
 `GET /api/admin/stats`, `GET /api/admin/system-config`, `PUT|DELETE /api/admin/system-config/{key}`,
 `POST /api/admin/system-config/reload`.
+Phase 5: `GET /api/admin/users?status=active|disabled`, `POST /api/admin/users/{id}/disable|enable`,
+`POST /api/admin/users/{id}/reset-password-link` → `{link, expiresAt}` (1h, single use, never
+emailed), `DELETE /api/admin/users/{id}` (superadmin only; shared cascade incl. stored files),
+`GET /api/admin/extraction/stats?range=7d|30d|90d` → `{totals, failurePct, byDay, byModel, extractor,
+model}`, `GET /api/admin/extraction/failed?page&pageSize`, `POST /api/admin/extraction/{receiptId}/retry`
+(forwards to the user API ops route below; 503 `retry_unavailable` when the secret/URL is unset),
+`GET|POST /api/admin/categories`, `PATCH|DELETE /api/admin/categories/{id}` (system categories;
+delete moves every user's receipts to `others` and returns `receiptsMoved`; `others` cannot be
+deleted or re-slugged → 409 `others_protected`; duplicate slug → 409 `category_exists`),
+`GET /api/admin/audit?action&adminId&targetId&page&pageSize`, `GET /api/admin/audit/actions`.
+The admin API needs the same `STORAGE_PROVIDER`/`LOCAL_STORAGE_DIR`/`CLOUDINARY_URL` as the user API
+(to delete files on account deletion), `APP_URL` (reset links), and `USER_API_URL` +
+`CONFIG_RELOAD_SECRET` (retry, reload).
 
 Receipts: `POST /receipts/upload` (multipart, 1..n files or pdf) → `{receiptId, status}`;
 `GET /receipts?q&category&from&to&sort&page`; `GET /receipts/{id}`; `PATCH /receipts/{id}`;
@@ -154,7 +177,8 @@ Notifications: `GET /notifications?page&pageSize` → `{notifications,total,unre
 
 Reports: `GET /reports/export?format=csv|pdf&range|from&to&tz` (attachment). All-data JSON:
 `GET /api/me/export`. Ops: `POST /openapi/scheduler/run` (header `X-Config-Reload-Secret`) forces the
-daily scheduler job.
+daily scheduler job. `POST /openapi/receipts/{id}/reextract` (same header; 404 when the secret is
+unset, 401 on mismatch) re-runs extraction for any user's receipt; the admin retry calls it.
 
 ## 5. Extraction contract (Gemini)
 
@@ -250,12 +274,16 @@ Phase 3 lands in the new layout: collection access in `backend/common/services/<
 logic + handlers in `backend/user/internal/{services,http/api}/<domain>`, screens in
 `frontend/user/src/features/<domain>`, shared widgets in `frontend/common/src`.
 
-### Phase 5 — Admin portal (after Phase 3)
-- [ ] User management: search, view, disable/enable, delete with cascade, reset password link
-- [ ] System config editor (dynamic `system_config` keys, sensitive masking, reload endpoint)
-- [ ] Extraction monitoring: volume, failure rate, model, average confidence; retry failed
-- [ ] Default categories management (system category CRUD)
-- [ ] Audit log of admin actions
+### Phase 5 — Admin portal (landed 2026-09-10)
+- [x] User management: search, view, disable/enable, delete with cascade, reset password link
+      (status filter; delete is superadmin-only; disabled users are rejected at login, refresh and
+      on every `/api` call through `commonmw.SetAuthGuard` → `auth.EnsureActive`)
+- [x] System config editor (dynamic `system_config` keys, sensitive masking, reload endpoint)
+      (built in Phase 2.5; mutations are now audited, values never logged)
+- [x] Extraction monitoring: volume, failure rate, model, average confidence; retry failed
+      (stacked daily succeeded/failed columns with table view; retry via the user API ops route)
+- [x] Default categories management (system category CRUD)
+- [x] Audit log of admin actions (filters: action, admin, target)
 
 ### Phase 4 — Suggested features (post-MVP)
 - [ ] Duplicate detection UI prompt on upload
