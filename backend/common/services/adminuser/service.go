@@ -93,4 +93,6 @@ func (s *Service) Update(ctx context.Context, id bson.ObjectID, set bson.M) erro
 }
 
 // Count returns the number of admin accounts.
-func (s *Service) Count(ctx context.Context) (int64, error) { return col().CountDocuments(ctx, bson.M{}) }
+func (s *Service) Count(ctx context.Context) (int64, error) {
+	return col().CountDocuments(ctx, bson.M{})
+}

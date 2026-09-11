@@ -172,7 +172,9 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]models.User, int64,
 }
 
 // Count returns the number of users.
-func (s *Service) Count(ctx context.Context) (int64, error) { return col().CountDocuments(ctx, bson.M{}) }
+func (s *Service) Count(ctx context.Context) (int64, error) {
+	return col().CountDocuments(ctx, bson.M{})
+}
 
 // CountSince returns users created at or after t.
 func (s *Service) CountSince(ctx context.Context, t time.Time) (int64, error) {

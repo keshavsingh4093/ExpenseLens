@@ -17,7 +17,9 @@ import (
 // ErrNotFound is returned when the warranty does not exist for the user.
 var ErrNotFound = errors.New("warranty not found")
 
-func col() *mongo.Collection { return database.GetDBConnection().Collection(models.WarrantiesCollection) }
+func col() *mongo.Collection {
+	return database.GetDBConnection().Collection(models.WarrantiesCollection)
+}
 
 // Indexes declares the warranties indexes.
 func Indexes() database.IndexSet {

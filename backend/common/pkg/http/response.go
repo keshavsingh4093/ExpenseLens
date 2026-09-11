@@ -74,7 +74,9 @@ func JSON(w http.ResponseWriter, status int, v any) {
 }
 
 // Success sends 200 with data.
-func Success(w http.ResponseWriter, data any) { JSON(w, http.StatusOK, APIResponse{Success: true, Data: data}) }
+func Success(w http.ResponseWriter, data any) {
+	JSON(w, http.StatusOK, APIResponse{Success: true, Data: data})
+}
 
 // Created sends 201 with data.
 func Created(w http.ResponseWriter, data any) {
