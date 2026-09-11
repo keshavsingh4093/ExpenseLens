@@ -94,18 +94,23 @@ func (TokenStore) Consume(ctx context.Context, kind models.TokenKind, raw string
 	return doc.SubjectID, nil
 }
 
-// Revoke marks a token used without returning it (logout).
+// Revoke marks a token used and expired without returning it (logout).
+// Expiring it too keeps it outside the Consume grace window, which only
+// exists for tokens that were legitimately rotated moments ago.
 func (TokenStore) Revoke(ctx context.Context, kind models.TokenKind, raw string) error {
+	now := time.Now().UTC()
 	_, err := tokens().UpdateOne(ctx,
 		bson.M{"kind": kind, "hash": hashOpaque(raw)},
-		bson.M{"$set": bson.M{"usedAt": time.Now().UTC()}})
+		bson.M{"$set": bson.M{"usedAt": now, "expiresAt": now}})
 	return err
 }
 
-// RevokeAll invalidates every live token of a kind for a subject.
+// RevokeAll invalidates every unexpired token of a kind for a subject
+// (account disabled, password changed by an admin).
 func (TokenStore) RevokeAll(ctx context.Context, kind models.TokenKind, subject bson.ObjectID) error {
+	now := time.Now().UTC()
 	_, err := tokens().UpdateMany(ctx,
-		bson.M{"kind": kind, "userId": subject, "usedAt": nil},
-		bson.M{"$set": bson.M{"usedAt": time.Now().UTC()}})
+		bson.M{"kind": kind, "userId": subject, "expiresAt": bson.M{"$gt": now}},
+		bson.M{"$set": bson.M{"usedAt": now, "expiresAt": now}})
 	return err
 }

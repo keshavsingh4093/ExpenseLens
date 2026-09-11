@@ -4,6 +4,7 @@ package api
 import (
 	gohttp "smartreceipt/backend/common/pkg/http"
 
+	"smartreceipt/backend/admin/internal/http/api/admins"
 	"smartreceipt/backend/admin/internal/http/api/audit"
 	"smartreceipt/backend/admin/internal/http/api/categories"
 	"smartreceipt/backend/admin/internal/http/api/extraction"
@@ -18,6 +19,7 @@ func GetRouteSpecs() []gohttp.RouteSpec {
 	specs := []gohttp.RouteSpec{}
 	specs = append(specs, me.GetRouteSpecs()...)
 	specs = append(specs, users.GetRouteSpecs()...)
+	specs = append(specs, admins.GetRouteSpecs()...)
 	specs = append(specs, stats.GetRouteSpecs()...)
 	specs = append(specs, systemconfig.GetRouteSpecs()...)
 	specs = append(specs, extraction.GetRouteSpecs()...)

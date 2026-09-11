@@ -36,10 +36,10 @@ func New() *Service { return &Service{users: usersvc.New(), receipts: receipt.Ne
 
 // core builds the common auth service with the admin's config. Access
 // tokens are never issued from here; only the reset-token and disable paths
-// are used. Mail is a no-op because admins hand links out themselves.
+// are used. Mail is only used by the emailed reset-link variant.
 func (s *Service) core() *auth.Service {
 	c := config.AppConfig
-	return auth.New(auth.Config{JWTSecret: c.JWTSecret, AppURL: c.AppURL}, s.users, mail.Discard(), nil)
+	return auth.New(auth.Config{JWTSecret: c.JWTSecret, AppURL: c.AppURL}, s.users, mail.New(c.Mail), nil)
 }
 
 // Get loads a user with their receipt count.
@@ -90,6 +90,17 @@ func (s *Service) ResetLink(ctx context.Context, id bson.ObjectID) (string, time
 		return "", time.Time{}, mapErr(err)
 	}
 	return link, exp, nil
+}
+
+// EmailResetLink issues a one-hour reset link and emails it to the user
+// (same wording as the self-service forgot-password mail). The link is not
+// returned to the caller.
+func (s *Service) EmailResetLink(ctx context.Context, id bson.ObjectID) (time.Time, error) {
+	exp, err := s.core().EmailResetLink(ctx, id)
+	if err != nil {
+		return time.Time{}, mapErr(err)
+	}
+	return exp, nil
 }
 
 func mapErr(err error) error {

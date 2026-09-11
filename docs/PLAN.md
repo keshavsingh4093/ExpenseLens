@@ -59,7 +59,7 @@ backend/
     cmd/server, cmd/scripts/{ensure-indexes,create-admin}
     internal/{app,config,http/{router,openapi/*,api/*},pkg/middleware,services/{adminauth,stats}}
     internal/services/{users,extraction,categories,audit} + internal/http/api/{users,extraction,
-    categories,audit} (Phase 5)
+    categories,audit} (Phase 5); services/admins + http/api/admins (Phase 5.1 admin accounts)
 ```
 Indexes are never built on the boot path: `make ensure-indexes` (per service) builds them and seeds
 the system categories; `app.Run()` only warns about missing ones.
@@ -73,7 +73,7 @@ frontend/
     theme/ ui/ charts/ format/ hooks/ categories/ analytics/types
   common/tailwind.preset.css   shared @theme tokens, dark variant, card/text-muted utilities
   user/src/       app/ (shell, router), features/{auth,dashboard,upload,receipts,categories,settings,…}
-  admin/src/      app/ (AdminShell, router), features/{auth,dashboard,users,config,extraction,categories,audit}
+  admin/src/      app/ (AdminShell, router), features/{auth,dashboard,users,admins,config,extraction,categories,audit}
 ```
 
 ## 3. Data model (MongoDB)
@@ -117,10 +117,17 @@ Shopping, Medical, Entertainment, Travel, Utilities, Groceries, Others.
 `userId`, `type: budget_alert|warranty_expiring|extraction_done|extraction_failed|weekly_summary`,
 `title`, `body`, `data`, `readAt?`.
 
+**admin_users** (admin portal accounts, separate from `users`)
+`email` (unique, lowercased), `name`, `passwordHash` (argon2id), `role: superadmin|admin`,
+`disabled?` (Phase 5.1: set from the Admins page; login, refresh and every `/api/admin` call reject
+the admin through the bearer guard, and disabling revokes their refresh tokens), `lastLoginAt?`.
+Refresh tokens live in `auth_tokens` with `kind: admin_refresh`. The first superadmin is created by
+`cmd/scripts/create-admin`; further admins are created from the portal.
+
 **admin_audit_log** (Phase 5)
 `adminId`, `adminEmail`, `action` (e.g. `user.disable`, `category.delete`, `system_config.upsert`),
-`targetType: user|receipt|category|system_config`, `targetId`, `details` (never secrets: no reset
-links, no config values), `ip`, `at`. Indexes `{at:-1}`, `{targetId,at:-1}`, `{adminId,at:-1}`,
+`targetType: user|receipt|category|system_config|admin`, `targetId`, `details` (never secrets: no
+reset links, no config values, no passwords; reset-link entries carry `{emailed: bool}`), `ip`, `at`. Indexes `{at:-1}`, `{targetId,at:-1}`, `{adminId,at:-1}`,
 `{action,at:-1}`. Written after every successful mutating admin route.
 
 ## 4. API surface
@@ -142,8 +149,11 @@ Admin API (`:8091`): `POST /openapi/admin/login`, `POST /openapi/admin/auth/{ref
 `GET /api/admin/stats`, `GET /api/admin/system-config`, `PUT|DELETE /api/admin/system-config/{key}`,
 `POST /api/admin/system-config/reload`.
 Phase 5: `GET /api/admin/users?status=active|disabled`, `POST /api/admin/users/{id}/disable|enable`,
-`POST /api/admin/users/{id}/reset-password-link` → `{link, expiresAt}` (1h, single use, never
-emailed), `DELETE /api/admin/users/{id}` (superadmin only; shared cascade incl. stored files),
+`POST /api/admin/users/{id}/reset-password-link` → `{link, expiresAt}` (1h, single use; the admin
+copies it out of band), or with body `{"send": true}` → `{sent: true, expiresAt}` and the link is
+emailed through `common/pkg/mail` with the forgot-password wording instead of being returned (Phase
+5.1; `MAIL_PROVIDER=log` prints it to the admin server log), `DELETE /api/admin/users/{id}`
+(superadmin only; shared cascade incl. stored files),
 `GET /api/admin/extraction/stats?range=7d|30d|90d` → `{totals, failurePct, byDay, byModel, extractor,
 model}`, `GET /api/admin/extraction/failed?page&pageSize`, `POST /api/admin/extraction/{receiptId}/retry`
 (forwards to the user API ops route below; 503 `retry_unavailable` when the secret/URL is unset),
@@ -151,9 +161,18 @@ model}`, `GET /api/admin/extraction/failed?page&pageSize`, `POST /api/admin/extr
 delete moves every user's receipts to `others` and returns `receiptsMoved`; `others` cannot be
 deleted or re-slugged → 409 `others_protected`; duplicate slug → 409 `category_exists`),
 `GET /api/admin/audit?action&adminId&targetId&page&pageSize`, `GET /api/admin/audit/actions`.
+Phase 5.1 admin accounts: `GET /api/admin/admins?q&page&pageSize` (any admin), and superadmin-only
+`POST /api/admin/admins {email,name,password,role}` (201; 409 `admin_exists`), `PATCH
+/api/admin/admins/{id} {name?, role?}`, `POST /api/admin/admins/{id}/disable|enable` (disable revokes
+the admin's refresh tokens; the bearer guard rejects their access token on the next request with 403
+`account_disabled`), `POST /api/admin/admins/{id}/reset-password {password}` (revokes their refresh
+tokens). Rules: you cannot disable or demote yourself (409 `self_target`) or the last active
+superadmin (409 `last_superadmin`); plain admins get 403 `forbidden` on every mutating route. Every
+mutation is audited (`admin.create|update|disable|enable|reset_password`, targetType `admin`).
+`cmd/scripts/create-admin` (`make create-admin`) is only needed to bootstrap the first superadmin.
 The admin API needs the same `STORAGE_PROVIDER`/`LOCAL_STORAGE_DIR`/`CLOUDINARY_URL` as the user API
-(to delete files on account deletion), `APP_URL` (reset links), and `USER_API_URL` +
-`CONFIG_RELOAD_SECRET` (retry, reload).
+(to delete files on account deletion), `APP_URL` (reset links), `MAIL_*`/`SMTP_*` (emailed reset
+links; same keys as the user API), and `USER_API_URL` + `CONFIG_RELOAD_SECRET` (retry, reload).
 
 Receipts: `POST /receipts/upload` (multipart, 1..n files or pdf) → `{receiptId, status}`;
 `GET /receipts?q&category&from&to&sort&page`; `GET /receipts/{id}`; `PATCH /receipts/{id}`;
@@ -284,6 +303,18 @@ logic + handlers in `backend/user/internal/{services,http/api}/<domain>`, screen
       (stacked daily succeeded/failed columns with table view; retry via the user API ops route)
 - [x] Default categories management (system category CRUD)
 - [x] Audit log of admin actions (filters: action, admin, target)
+
+#### Phase 5.1 — Admin hardening (landed 2026-09-11)
+- [x] gofmt sweep across `backend/{common,user,admin}` (separate `chore: gofmt` commit)
+- [x] Emailed password-reset links: `{"send": true}` on the reset-link route sends the link through
+      `common/pkg/mail` (admin config `MAIL_PROVIDER`, `MAIL_FROM`, `SMTP_*`), response carries no
+      link, audit `{emailed: true|false}`; "Email link" button in the Users detail modal
+- [x] Admin account management: `adminuser` List/SetDisabled/CountSuperadmins/IsDisabled, admin
+      `admins` service + `/api/admin/admins` routes (superadmin-only mutations, self and
+      last-superadmin protection, refresh revocation, audit), bearer guard `adminauth.EnsureActive`
+      on the admin router (403 `account_disabled` on the next request), Admins page (table, add-admin
+      modal with generated/typed password, role select, disable/enable, set password; read-only with
+      a hint for plain admins); `create-admin` stays the bootstrap path for the first superadmin
 
 ### Phase 4 — Suggested features (post-MVP)
 - [ ] Duplicate detection UI prompt on upload

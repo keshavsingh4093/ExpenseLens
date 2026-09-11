@@ -107,10 +107,49 @@ func (s *Service) Me(ctx context.Context, id bson.ObjectID) (*models.AdminUser, 
 	return a, nil
 }
 
-// CreateAdmin hashes the password and inserts an admin (tooling).
+// EnsureActive rejects requests from admins that were disabled or deleted
+// after their access token was issued (bearer guard, projected lookup).
+func (s *Service) EnsureActive(ctx context.Context, id bson.ObjectID) error {
+	disabled, err := s.admins.IsDisabled(ctx, id)
+	if err != nil {
+		if errors.Is(err, adminuser.ErrNotFound) {
+			return gohttp.ErrUnauthorized
+		}
+		return err
+	}
+	if disabled {
+		return auth.ErrAccountDisabled
+	}
+	return nil
+}
+
+// SetPassword replaces an admin's password and ends every refresh session.
+func (s *Service) SetPassword(ctx context.Context, id bson.ObjectID, password string) error {
+	if err := auth.ValidatePassword(password); err != nil {
+		return gohttp.ErrValidation(map[string]string{"password": err.Error()})
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		return err
+	}
+	if err := s.admins.Update(ctx, id, bson.M{"passwordHash": hash}); err != nil {
+		return err
+	}
+	return s.RevokeSessions(ctx, id)
+}
+
+// RevokeSessions invalidates every live refresh token of an admin.
+func (s *Service) RevokeSessions(ctx context.Context, id bson.ObjectID) error {
+	return s.tokens.RevokeAll(ctx, models.TokenAdminRefresh, id)
+}
+
+// CreateAdmin hashes the password and inserts an admin (tooling + portal).
 func (s *Service) CreateAdmin(ctx context.Context, email, name, password, role string) (*models.AdminUser, error) {
 	if err := auth.ValidatePassword(password); err != nil {
-		return nil, err
+		return nil, gohttp.ErrValidation(map[string]string{"password": err.Error()})
+	}
+	if role != "" && !models.ValidAdminRole(role) {
+		return nil, gohttp.ErrValidation(map[string]string{"role": "must be admin or superadmin"})
 	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {

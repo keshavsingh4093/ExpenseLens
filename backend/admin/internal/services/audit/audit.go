@@ -24,6 +24,7 @@ var store = adminaudit.New()
 // Target types.
 const (
 	TargetUser         = "user"
+	TargetAdmin        = "admin"
 	TargetReceipt      = "receipt"
 	TargetCategory     = "category"
 	TargetSystemConfig = "system_config"

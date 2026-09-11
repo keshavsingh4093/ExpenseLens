@@ -1,4 +1,6 @@
-// Command create-admin creates an admin-portal account.
+// Command create-admin creates an admin-portal account. It is the bootstrap
+// path for the first superadmin; further admins are created from the portal
+// (Admins page, superadmin only).
 //
 //	go run ./cmd/scripts/create-admin -email admin@example.com -name "Admin" -password 'secret123' [-role superadmin]
 //
@@ -13,6 +15,7 @@ import (
 	"os"
 
 	"smartreceipt/backend/common/pkg/database"
+	gohttp "smartreceipt/backend/common/pkg/http"
 	"smartreceipt/backend/common/services/adminuser"
 
 	"smartreceipt/backend/admin/internal/app"
@@ -42,6 +45,13 @@ func main() {
 	if err != nil {
 		if errors.Is(err, adminuser.ErrEmailTaken) {
 			fmt.Fprintln(os.Stderr, "create-admin: an admin with that email already exists")
+			os.Exit(1)
+		}
+		var api *gohttp.APIError
+		if errors.As(err, &api) && len(api.Fields) > 0 {
+			for k, v := range api.Fields {
+				fmt.Fprintf(os.Stderr, "create-admin: %s %s\n", k, v)
+			}
 			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "create-admin: %v\n", err)

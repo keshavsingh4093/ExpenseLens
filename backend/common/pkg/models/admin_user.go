@@ -9,6 +9,17 @@ import (
 // AdminUsersCollection stores admin-portal accounts.
 const AdminUsersCollection = "admin_users"
 
+// Admin roles. Superadmins may also delete users and manage admin accounts.
+const (
+	AdminRoleAdmin      = "admin"
+	AdminRoleSuperadmin = "superadmin"
+)
+
+// ValidAdminRole reports whether role is one of the known roles.
+func ValidAdminRole(role string) bool {
+	return role == AdminRoleAdmin || role == AdminRoleSuperadmin
+}
+
 // AdminUser is an admin-portal account (separate from end users).
 type AdminUser struct {
 	ID           bson.ObjectID `bson:"_id,omitempty" json:"id"`
@@ -28,11 +39,12 @@ type PublicAdmin struct {
 	Email       string     `json:"email"`
 	Name        string     `json:"name"`
 	Role        string     `json:"role"`
+	Disabled    bool       `json:"disabled,omitempty"`
 	LastLoginAt *time.Time `json:"lastLoginAt,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 }
 
 // ToPublic converts an AdminUser to its API view.
 func (a *AdminUser) ToPublic() PublicAdmin {
-	return PublicAdmin{ID: a.ID.Hex(), Email: a.Email, Name: a.Name, Role: a.Role, LastLoginAt: a.LastLoginAt, CreatedAt: a.CreatedAt}
+	return PublicAdmin{ID: a.ID.Hex(), Email: a.Email, Name: a.Name, Role: a.Role, Disabled: a.Disabled, LastLoginAt: a.LastLoginAt, CreatedAt: a.CreatedAt}
 }

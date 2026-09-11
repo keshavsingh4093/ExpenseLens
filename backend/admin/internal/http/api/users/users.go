@@ -3,6 +3,8 @@
 package users
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -91,10 +93,33 @@ func setDisabled(w http.ResponseWriter, r *http.Request, disabled bool) {
 func handleDisable(w http.ResponseWriter, r *http.Request) { setDisabled(w, r, true) }
 func handleEnable(w http.ResponseWriter, r *http.Request)  { setDisabled(w, r, false) }
 
+// handleResetLink issues a password-reset link. The body is optional:
+// {"send": true} emails the link to the user instead of returning it.
 func handleResetLink(w http.ResponseWriter, r *http.Request) {
 	id, err := validate.ObjectID(chi.URLParam(r, "id"))
 	if err != nil {
 		gohttp.WriteError(w, r, err)
+		return
+	}
+	var in struct {
+		Send bool `json:"send"`
+	}
+	raw, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+	if len(bytes.TrimSpace(raw)) > 0 {
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		if err := gohttp.Decode(r, &in); err != nil {
+			gohttp.WriteError(w, r, err)
+			return
+		}
+	}
+	if in.Send {
+		exp, err := svc.EmailResetLink(r.Context(), id)
+		if err != nil {
+			gohttp.WriteError(w, r, err)
+			return
+		}
+		audit.Log(r, "user.reset_link", audit.TargetUser, id.Hex(), map[string]any{"emailed": true})
+		gohttp.Success(w, map[string]any{"sent": true, "expiresAt": exp})
 		return
 	}
 	link, exp, err := svc.ResetLink(r.Context(), id)
@@ -103,7 +128,7 @@ func handleResetLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The link itself is a credential: never write it to the audit log.
-	audit.Log(r, "user.reset_link", audit.TargetUser, id.Hex(), nil)
+	audit.Log(r, "user.reset_link", audit.TargetUser, id.Hex(), map[string]any{"emailed": false})
 	gohttp.Success(w, map[string]any{"link": link, "expiresAt": exp})
 }
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"smartreceipt/backend/common/pkg/config"
+	"smartreceipt/backend/common/pkg/mail"
 )
 
 // DefaultPort is the admin API port.
@@ -33,6 +34,10 @@ type Config struct {
 	StorageProvider string
 	LocalStorageDir string
 	CloudinaryURL   string
+
+	// Mail sends password-reset links when an admin asks for the emailed
+	// variant (same keys as the user backend; "log" prints to the server log).
+	Mail mail.Config
 }
 
 // AppConfig is the process-wide configuration.
@@ -69,6 +74,14 @@ func build(base *config.BaseConfig) *Config {
 		StorageProvider:    GetConfigVal("STORAGE_PROVIDER", "local"),
 		LocalStorageDir:    GetConfigVal("LOCAL_STORAGE_DIR", "../user/.data/uploads"),
 		CloudinaryURL:      GetConfigVal("CLOUDINARY_URL", ""),
+		Mail: mail.Config{
+			Provider: GetConfigVal("MAIL_PROVIDER", "log"),
+			From:     GetConfigVal("MAIL_FROM", "ExpenseLens <no-reply@expenselens.local>"),
+			SMTPHost: GetConfigVal("SMTP_HOST", ""),
+			SMTPPort: config.GetConfigInt("SMTP_PORT", 587),
+			SMTPUser: GetConfigVal("SMTP_USER", ""),
+			SMTPPass: GetConfigVal("SMTP_PASS", ""),
+		},
 	}
 }
 

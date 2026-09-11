@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Search, Users, Ban, CircleCheck, KeyRound, Trash2, Copy, Check } from 'lucide-react'
+import { Search, Users, Ban, CircleCheck, KeyRound, Trash2, Copy, Check, Mail } from 'lucide-react'
 import { clsx } from 'clsx'
 import { PageHeader } from '@common/ui/PageHeader'
 import { Input } from '@common/ui/Field'
@@ -25,6 +25,7 @@ const statusFilters: { value: UserStatusFilter; label: string }[] = [
 
 const signIn = (u: PortalUser) => [u.hasPassword ? 'password' : null, ...u.providers].filter(Boolean).join(', ') || '—'
 const errMsg = (e: unknown) => (e instanceof ApiRequestError ? e.message : 'Something went wrong')
+const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
 
 export function UsersPage() {
   const [q, setQ] = useState('')
@@ -123,6 +124,7 @@ function UserDetail({ user, onClose }: { user: PortalUser | null; onClose: () =>
   const q = useQuery({ queryKey: userKeys.detail(user?.id ?? ''), queryFn: () => usersApi.get(user!.id), enabled: !!user })
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [reset, setReset] = useState<{ link: string; expiresAt: string } | null>(null)
+  const [sent, setSent] = useState<{ email: string; expiresAt: string } | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
   const u = q.data?.user ?? user
@@ -134,7 +136,12 @@ function UserDetail({ user, onClose }: { user: PortalUser | null; onClose: () =>
   })
   const link = useMutation({
     mutationFn: () => usersApi.resetLink(user!.id),
-    onSuccess: (r) => { setError(''); setCopied(false); setReset(r) },
+    onSuccess: (r) => { setError(''); setSent(null); setCopied(false); setReset(r) },
+    onError: (e) => setError(errMsg(e)),
+  })
+  const email = useMutation({
+    mutationFn: () => usersApi.emailResetLink(user!.id),
+    onSuccess: (r) => { setError(''); setReset(null); setSent({ email: u!.email, expiresAt: r.expiresAt }) },
     onError: (e) => setError(errMsg(e)),
   })
   const remove = useMutation({
@@ -172,6 +179,12 @@ function UserDetail({ user, onClose }: { user: PortalUser | null; onClose: () =>
             <dt className="text-muted">ID</dt><dd className="font-mono text-xs break-all">{u.id}</dd>
           </dl>
 
+          {sent && (
+            <Alert kind="success">
+              Sent to {sent.email}, expires {fmtTime(sent.expiresAt)}.
+            </Alert>
+          )}
+
           {reset && (
             <div className="rounded-lg border border-[var(--border)] p-3">
               <div className="mb-1 text-xs font-medium">Password reset link</div>
@@ -182,7 +195,7 @@ function UserDetail({ user, onClose }: { user: PortalUser | null; onClose: () =>
                 </Button>
               </div>
               <p className="text-muted mt-1 text-xs">
-                Single use, expires {new Date(reset.expiresAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}. Share it with the user directly; nothing is emailed.
+                Single use, expires {fmtTime(reset.expiresAt)}. Share it with the user directly; nothing is emailed.
               </p>
             </div>
           )}
@@ -210,6 +223,9 @@ function UserDetail({ user, onClose }: { user: PortalUser | null; onClose: () =>
               )}
               <Button variant="secondary" size="sm" loading={link.isPending} onClick={() => link.mutate()}>
                 <KeyRound className="size-4" /> Reset link
+              </Button>
+              <Button variant="secondary" size="sm" loading={email.isPending} onClick={() => email.mutate()} title="Email a reset link to the user">
+                <Mail className="size-4" /> Email link
               </Button>
               <Button
                 variant="danger"

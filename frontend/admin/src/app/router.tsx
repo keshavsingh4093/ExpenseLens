@@ -4,6 +4,7 @@ import { AdminShell } from './AdminShell'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { UsersPage } from '@/features/users/UsersPage'
+import { AdminsPage } from '@/features/admins/AdminsPage'
 import { SystemConfigPage } from '@/features/config/SystemConfigPage'
 import { ExtractionPage } from '@/features/extraction/ExtractionPage'
 import { CategoriesPage } from '@/features/categories/CategoriesPage'
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <DashboardPage /> },
           { path: 'users', element: <UsersPage /> },
+          { path: 'admins', element: <AdminsPage /> },
           { path: 'extraction', element: <ExtractionPage /> },
           { path: 'categories', element: <CategoriesPage /> },
           { path: 'system-config', element: <SystemConfigPage /> },

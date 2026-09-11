@@ -152,11 +152,17 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 		return err
 	}
 	link := fmt.Sprintf("%s/reset-password?token=%s", s.cfg.AppURL, url.QueryEscape(raw))
-	return s.mail.Send(ctx, mail.Message{
+	return s.mail.Send(ctx, resetMessage(u, link))
+}
+
+// resetMessage is the password-reset email; ForgotPassword (user portal) and
+// EmailResetLink (admin portal) send the same wording.
+func resetMessage(u *models.User, link string) mail.Message {
+	return mail.Message{
 		To:      u.Email,
 		Subject: "Reset your ExpenseLens password",
 		Body:    "Hi " + u.Name + ",\n\nUse this link to set a new password (valid for 1 hour):\n" + link + "\n\nIf you did not request this, ignore this email.",
-	})
+	}
 }
 
 // ResetPassword consumes a reset token and sets a new password.
@@ -286,18 +292,39 @@ func (s *Service) SetDisabled(ctx context.Context, uid bson.ObjectID, disabled b
 // that consumes it (admin portal hands it to the user out of band; nothing
 // is emailed).
 func (s *Service) ResetLink(ctx context.Context, uid bson.ObjectID) (string, time.Time, error) {
-	if _, err := s.users.FindByID(ctx, uid); err != nil {
+	_, link, exp, err := s.issueResetLink(ctx, uid)
+	return link, exp, err
+}
+
+// EmailResetLink issues a password-reset token for uid and emails the link
+// to the user with the same wording as ForgotPassword (admin portal "send"
+// variant). The link itself is never returned.
+func (s *Service) EmailResetLink(ctx context.Context, uid bson.ObjectID) (time.Time, error) {
+	u, link, exp, err := s.issueResetLink(ctx, uid)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if err := s.mail.Send(ctx, resetMessage(u, link)); err != nil {
+		return time.Time{}, err
+	}
+	return exp, nil
+}
+
+func (s *Service) issueResetLink(ctx context.Context, uid bson.ObjectID) (*models.User, string, time.Time, error) {
+	u, err := s.users.FindByID(ctx, uid)
+	if err != nil {
 		if errors.Is(err, user.ErrNotFound) {
-			return "", time.Time{}, gohttp.ErrNotFound
+			return nil, "", time.Time{}, gohttp.ErrNotFound
 		}
-		return "", time.Time{}, err
+		return nil, "", time.Time{}, err
 	}
 	const ttl = time.Hour
 	raw, err := s.tokens.Issue(ctx, models.TokenReset, uid, ttl, "", "")
 	if err != nil {
-		return "", time.Time{}, err
+		return nil, "", time.Time{}, err
 	}
-	return fmt.Sprintf("%s/reset-password?token=%s", s.cfg.AppURL, url.QueryEscape(raw)), time.Now().UTC().Add(ttl), nil
+	link := fmt.Sprintf("%s/reset-password?token=%s", s.cfg.AppURL, url.QueryEscape(raw))
+	return u, link, time.Now().UTC().Add(ttl), nil
 }
 
 // DeleteAccount removes the user and revokes their tokens. Domain data is

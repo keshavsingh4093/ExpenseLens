@@ -30,6 +30,8 @@ export const usersApi = {
   disable: (id: string) => api<{ user: PortalUser }>(`/api/admin/users/${id}/disable`, { method: 'POST' }),
   enable: (id: string) => api<{ user: PortalUser }>(`/api/admin/users/${id}/enable`, { method: 'POST' }),
   resetLink: (id: string) => api<{ link: string; expiresAt: string }>(`/api/admin/users/${id}/reset-password-link`, { method: 'POST' }),
+  emailResetLink: (id: string) =>
+    api<{ sent: true; expiresAt: string }>(`/api/admin/users/${id}/reset-password-link`, { method: 'POST', body: { send: true } }),
   remove: (id: string) => api<void>(`/api/admin/users/${id}`, { method: 'DELETE' }),
 }
 

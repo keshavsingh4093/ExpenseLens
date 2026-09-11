@@ -3,6 +3,7 @@ export type Admin = {
   email: string
   name: string
   role: 'superadmin' | 'admin'
+  disabled?: boolean
   lastLoginAt?: string
   createdAt: string
 }
