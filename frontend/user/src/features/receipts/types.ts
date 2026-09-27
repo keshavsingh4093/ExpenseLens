@@ -29,7 +29,8 @@ export type Receipt = {
     suggestedCategory?: string
     warrantyCandidates?: { itemName: string; reason: string }[]
     extractedAt: string
-    error?: string
+    /** Why extraction failed (rate_limited | unavailable | blocked | bad_response | failed). Raw provider errors are never sent. */
+    errorCode?: string
     attempts: number
   }
   createdAt: string

@@ -1,6 +1,11 @@
 package extraction
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+)
 
 func TestParseWire(t *testing.T) {
 	data := []byte(`{"merchant":" Reliance Smart ","date":"2026-06-11","time":"18:42","currency":"inr",
@@ -33,6 +38,26 @@ func TestToMinor(t *testing.T) {
 	}{{0, 0}, {1, 100}, {0.1, 10}, {1230.5, 123050}, {19.99, 1999}, {0.29, 29}, {-5.5, -550}} {
 		if got := toMinor(c.in); got != c.want {
 			t.Errorf("toMinor(%v) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}
+
+func TestCodeOf(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want string
+	}{
+		{nil, ""},
+		{newError(codeForStatus(429), "quota"), CodeRateLimited},
+		{newError(codeForStatus(503), "down"), CodeUnavailable},
+		{newError(codeForStatus(400), "bad key"), CodeFailed},
+		{newError(CodeBlocked, "blocked"), CodeBlocked},
+		{fmt.Errorf("wrapped: %w", newError(CodeBadResponse, "json")), CodeBadResponse},
+		{context.DeadlineExceeded, CodeUnavailable},
+		{errors.New("plain"), CodeFailed},
+	} {
+		if got := CodeOf(c.err); got != c.want {
+			t.Errorf("CodeOf(%v) = %q, want %q", c.err, got, c.want)
 		}
 	}
 }

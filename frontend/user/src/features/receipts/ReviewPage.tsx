@@ -14,6 +14,22 @@ import { ImageCarousel } from './ImageCarousel'
 import { ReceiptForm } from './ReceiptForm'
 import type { ReceiptPatch } from './types'
 
+/** User-facing text for an extraction failure; provider details stay in the server log. */
+export function extractionFailureMessage(code?: string): string {
+  switch (code) {
+    case 'rate_limited':
+      return 'The extraction service is busy right now. Wait a minute and retry.'
+    case 'unavailable':
+      return 'The extraction service is temporarily unavailable.'
+    case 'blocked':
+      return 'The extraction service could not process this file.'
+    case 'bad_response':
+      return 'The extraction service returned an unreadable result.'
+    default:
+      return 'Automatic extraction failed.'
+  }
+}
+
 export function ReviewPage() {
   const { id = '' } = useParams()
   const nav = useNavigate()
@@ -58,7 +74,7 @@ export function ReviewPage() {
       <div className="grid gap-5 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <div>
           <ImageCarousel images={rc.images} />
-          {rc.extracted && rc.status !== 'processing' && !rc.extracted.error && (
+          {rc.extracted && rc.status !== 'processing' && rc.status !== 'failed' && (
             <p className="text-muted mt-2 flex items-center gap-1 text-xs">
               <Sparkles className="size-3.5 text-brand-600" />
               Extracted by {rc.extracted.model} · confidence {Math.round(rc.extracted.confidence * 100)}%
@@ -78,7 +94,7 @@ export function ReviewPage() {
               {rc.status === 'failed' && (
                 <div className="mb-4">
                   <Alert>
-                    Automatic extraction failed{rc.extracted?.error ? `: ${rc.extracted.error}` : ''}. Fill in the details manually or retry.
+                    {extractionFailureMessage(rc.extracted?.errorCode)} Fill in the details manually or retry.
                     <div className="mt-2">
                       <Button size="sm" variant="secondary" onClick={() => reextract.mutate()} loading={reextract.isPending}>
                         <RefreshCw className="size-3.5" /> Retry extraction

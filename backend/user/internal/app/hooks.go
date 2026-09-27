@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"smartreceipt/backend/common/pkg/extraction"
 	"smartreceipt/backend/common/pkg/models"
 
 	"smartreceipt/backend/user/internal/services/budget"
@@ -20,9 +21,17 @@ func domainHooks() receipt.Hooks {
 		OnExtracted: func(ctx context.Context, rc *models.Receipt) {
 			data := map[string]any{"receiptId": rc.ID.Hex(), "status": string(rc.Status)}
 			if rc.Status == models.ReceiptFailed {
+				// Never put the raw provider error in front of the user; the
+				// classified code picks a message and the detail stays in the log.
 				msg := "We could not read this receipt. Open it to retry or fill in the details manually."
-				if rc.Extracted != nil && rc.Extracted.Error != "" {
-					msg = "Extraction failed: " + rc.Extracted.Error
+				if rc.Extracted != nil {
+					switch rc.Extracted.ErrorCode {
+					case extraction.CodeRateLimited:
+						msg = "The extraction service is busy right now. Open the receipt to retry in a minute."
+					case extraction.CodeUnavailable:
+						msg = "The extraction service is temporarily unavailable. Open the receipt to retry later."
+					}
+					data["errorCode"] = rc.Extracted.ErrorCode
 				}
 				notify.Notify(ctx, rc.UserID, models.NotifyExtractionFailed, "Receipt extraction failed", msg, data, "")
 				return

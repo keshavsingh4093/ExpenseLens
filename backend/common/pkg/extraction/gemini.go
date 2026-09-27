@@ -146,12 +146,12 @@ func (g *Gemini) Extract(ctx context.Context, in Input) (*Result, error) {
 	req.Header.Set("x-goog-api-key", g.apiKey)
 	resp, err := g.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("extraction: gemini request: %w", err)
+		return nil, &Error{Code: CodeUnavailable, Message: "gemini request: " + err.Error(), Cause: err}
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("extraction: gemini status %d: %s", resp.StatusCode, truncate(raw, 400))
+		return nil, newError(codeForStatus(resp.StatusCode), "gemini status %d: %s", resp.StatusCode, truncate(raw, 400))
 	}
 	var out struct {
 		Candidates []struct {
@@ -167,13 +167,13 @@ func (g *Gemini) Extract(ctx context.Context, in Input) (*Result, error) {
 		} `json:"promptFeedback"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("extraction: gemini response: %w", err)
+		return nil, &Error{Code: CodeBadResponse, Message: "gemini response: " + err.Error(), Cause: err}
 	}
 	if out.PromptFeedback != nil && out.PromptFeedback.BlockReason != "" {
-		return nil, fmt.Errorf("extraction: gemini blocked: %s", out.PromptFeedback.BlockReason)
+		return nil, newError(CodeBlocked, "gemini blocked: %s", out.PromptFeedback.BlockReason)
 	}
 	if len(out.Candidates) == 0 || len(out.Candidates[0].Content.Parts) == 0 {
-		return nil, errors.New("extraction: gemini returned no candidates")
+		return nil, newError(CodeBadResponse, "gemini returned no candidates")
 	}
 	var text strings.Builder
 	for _, p := range out.Candidates[0].Content.Parts {
@@ -186,7 +186,7 @@ func (g *Gemini) Extract(ctx context.Context, in Input) (*Result, error) {
 func parseWire(data []byte, model string) (*Result, error) {
 	var w wire
 	if err := json.Unmarshal(data, &w); err != nil {
-		return nil, fmt.Errorf("extraction: model JSON: %w", err)
+		return nil, &Error{Code: CodeBadResponse, Message: "model JSON: " + err.Error(), Cause: err}
 	}
 	r := &Result{
 		Merchant: strings.TrimSpace(w.Merchant), Date: w.Date, Currency: strings.ToUpper(w.Currency),
@@ -228,6 +228,15 @@ func parseWire(data []byte, model string) (*Result, error) {
 		r.Currency = "INR"
 	}
 	return r, nil
+}
+
+// isTimeout reports context deadline/cancellation and net timeouts.
+func isTimeout(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var ne interface{ Timeout() bool }
+	return errors.As(err, &ne) && ne.Timeout()
 }
 
 func truncate(b []byte, n int) string {

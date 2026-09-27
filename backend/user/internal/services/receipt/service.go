@@ -261,7 +261,7 @@ func (s *Service) runExtraction(ctx context.Context, uid, id bson.ObjectID, file
 	if err != nil {
 		_ = s.repo.Update(ctx, uid, id, bson.M{
 			"status":    models.ReceiptFailed,
-			"extracted": models.Extracted{Model: deps.Extractor.Name(), ExtractedAt: now, Error: err.Error(), Attempts: attempts},
+			"extracted": models.Extracted{Model: deps.Extractor.Name(), ExtractedAt: now, Error: err.Error(), ErrorCode: extraction.CodeOf(err), Attempts: attempts},
 		})
 		s.notify(uid, id)
 		return

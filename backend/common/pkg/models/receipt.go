@@ -50,7 +50,8 @@ type Extracted struct {
 	SuggestedCategory  string                         `bson:"suggestedCategory,omitempty" json:"suggestedCategory,omitempty"`
 	WarrantyCandidates []extraction.WarrantyCandidate `bson:"warrantyCandidates,omitempty" json:"warrantyCandidates,omitempty"`
 	ExtractedAt        time.Time                      `bson:"extractedAt" json:"extractedAt"`
-	Error              string                         `bson:"error,omitempty" json:"error,omitempty"`
+	Error              string                         `bson:"error,omitempty" json:"-"`
+	ErrorCode          string                         `bson:"errorCode,omitempty" json:"errorCode,omitempty"`
 	Attempts           int                            `bson:"attempts" json:"attempts"`
 }
 
